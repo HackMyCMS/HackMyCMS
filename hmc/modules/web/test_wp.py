@@ -15,7 +15,7 @@ class TestYAML(Workflow):
         wp = self.add_link("wordpress", False)
 
         detection = self.add_module(YAMLModule, "wordpress.wordpress_detect", result=wp)
-        sfl = self.add_module(YAMLModule, "wordpress.wp_simplefilelist_detect", execute=wp, print_result=True)
+        sfl = self.add_module(YAMLModule, "wordpress.wp_simplefilelist_detect", start=wp, print_result=True)
 
     def execute(self):
         if self.links.wordpress:

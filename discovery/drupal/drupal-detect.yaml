@@ -1,0 +1,43 @@
+id: drupal-detect
+
+info:
+  name: Drupal Detect
+  author: H4tsu
+  severity: info
+  metadata:
+    verified: true
+    max-request: 4
+    vendor: drupal
+    product: drupal
+    shodan-query: 'http.component:"Drupal"'
+    category: cms
+  tags: [tech, drupal, cms]
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}"
+      - "{{BaseURL}}/robots.txtw"
+      - "{{BaseURL}}/core/COPYRIGHT.txt"
+    matchers-condition: or
+    matchers:
+      - type: regex
+        part: body
+        regex:
+          - '<meta name="Generator" content="Drupal.*">'
+          - '<.*data-drupal.*>'
+        condition: or
+      - type: word
+        part: body
+        words:
+          - '/CHANGELOG.txt'
+          - '/README.txt'
+          - 'Drupal'
+        condition: or
+    extractors:
+      - type: regex
+        part: body
+        name: version
+        group: 1
+        regex:
+          - 'class="site-version">([0-9.x-]+)'

@@ -39,8 +39,8 @@ class YAMLModule(HTTPModule):
     condition = None
     result = None
 
-    def __init__(self, env, file_path=None, execute:bool=None, result:bool=None, print_result=False):
-        super().__init__(env, execute=execute, result=result)
+    def __init__(self, env, file_path=None, start:bool=None, result:bool=None, print_result=False):
+        super().__init__(env, start=start, result=result)
 
         self._name = None
         self._print = print_result
@@ -64,9 +64,6 @@ class YAMLModule(HTTPModule):
             else:
                 self.log_failure("%s : KO", self._name)
         self.result = result
-
-    def check_activation(self):
-        return self.condition is None or self.condition
 
     def add_arguments(self, parser):
         super().add_arguments(parser)

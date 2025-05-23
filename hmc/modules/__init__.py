@@ -46,12 +46,12 @@ class ChainedModule(metaclass=_Module_Meta):
 
     _keys = {}
 
-    def __init__(self, env:Environment=None, execute=None, **links):
+    def __init__(self, env:Environment=None, start=None, **links):
         
         if env is not None:
             self.env = env
 
-        self.set_links(execute=execute, **links)
+        self.set_links(start=start, **links)
 
         # for key in self.keys:
         #     self._keys[key] = ChainedKeys()
@@ -92,7 +92,7 @@ class ChainedModule(metaclass=_Module_Meta):
         return True    
         
     def check_activation(self) -> bool:
-        return True
+        return self.start is None or self.start
 
     def log_success(self, msg:str, *args):
         log.success('(' + self.__module_name__ + ') ' + msg, *args)
