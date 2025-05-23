@@ -1,0 +1,28 @@
+id: wp-simplefilelist-detect
+
+info:
+  name: Wordpress Simple File List Scanner
+  author: Wayko, Mageos
+  severity: info
+  tags: tech,wordpress,cms,wp
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/wp-content/plugins/simple-file-list/readme.txt"
+
+    redirects: true
+    max-redirects: 2
+    stop-at-first-match: true
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status: 200
+
+    extractors:
+      - type: regex
+        name: version
+        group: 1
+        regex:
+          - 'Stable tag: ((\d+\.?)+)'
