@@ -8,9 +8,9 @@ from hmc.modules.http_module import HTTPModule
 
 log = logging.getLogger("hmc")
 
-YAML_PATH = os.environ["PYTHONPATH"] + "discovery"
+YAML_PATH = os.path.join(os.environ["PYTHONPATH"], "discovery")
 
-def open_yaml_file(file:str):
+def _open_yaml_file(file:str):
     file_name, file_ext = os.path.splitext(file)
 
     file_path = file
@@ -39,31 +39,45 @@ class YAMLModule(HTTPModule):
     condition = None
     result = None
 
-    def __init__(self, env, file_path=None, start:bool=None, result:bool=None, print_result=False):
-        super().__init__(env, start=start, result=result)
+    def __init__(self, env, file_path=None, start:bool=None, result:bool=None, urls=None, print_result=False):
+        super().__init__(env, start=start, result=result, urls=urls)
 
         self._name = None
         self._print = print_result
 
         if file_path:
-            yaml_data = open_yaml_file(file_path)
+            yaml_data = _open_yaml_file(file_path)
             self.requests = yaml_data.get('http', [])
             self._name = yaml_data.get('id')
 
-    def execute(self, url, yaml_file:str=None):
+    def execute(self, url=None, yaml_file:str=None):
         yaml_data = None
         if yaml_file:
-            yaml_data = open_yaml_file(yaml_file)
+            yaml_data = _open_yaml_file(yaml_file)
             self.requests = yaml_data.get('http', [])
             self._name = yaml_data.get('id')
 
-        result = super().execute(url)
+        if url:
+            urls = [url]
+        elif self.urls:
+            urls = self.urls
+        else:
+            log.error("No url given")
+            return False
+
+        for url in self.urls:
+            result = super().execute(url)
+            if result:
+                break
+            
         if self._name and self._print:
             if result:
                 self.log_success("%s : OK", self._name)
             else:
                 self.log_failure("%s : KO", self._name)
         self.result = result
+
+        return True
 
     def add_arguments(self, parser):
         super().add_arguments(parser)

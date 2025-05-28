@@ -57,7 +57,7 @@ class Workflow(ChainedModule):
     def add_arguments(self, parser:argparse.ArgumentParser) -> None:
         for module in self.modules:
             try:
-                module_group = parser.add_argument_group(module.__module_name__)
+                module_group = parser.add_argument_group(module.__module_name__, module.__module_desc__)
                 module.add_arguments(module_group)                    
             except argparse.ArgumentError as e:
                 log.warning("Argument %s used by multiple modules", e.argument_name)

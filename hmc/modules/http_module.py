@@ -17,7 +17,7 @@ def complete_path(path:str, url:str=None):
     port = pu.port if pu.port else ("443" if pu.scheme == "https" else "80")
 
     replacement = {
-        "BaseURL"   : url,
+        "BaseURL"   : pu.geturl()[:-1],
         "RootURL"   : pu.scheme + "://" + pu.hostname + (':' + pu.port if pu.port else ""),
         "Hostname"  : pu.hostname + (':' + pu.port if pu.port else ""),
         "Host"      : pu.hostname,
@@ -29,6 +29,7 @@ def complete_path(path:str, url:str=None):
 
     for key, value in replacement.items():
         path = path.replace('{{%s}}' % (key), value)
+    
     return path
 
 def evaluate_word(matcher, text) -> bool:
@@ -81,8 +82,8 @@ class HTTPModule(ChainedModule):
 
     requests = []
 
-    def __init__(self, update:bool=False, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, env, update:bool=False, urls=None, *args, **kwargs):
+        super().__init__(env, urls=urls, *args, **kwargs)
 
         self.update = update
 
@@ -128,6 +129,8 @@ class HTTPModule(ChainedModule):
         index = 1
         for p in path:
             response = method(p, update=self.update, headers=headers, data=body)
+            if not response:
+                break
 
             result['text'] = response.text
             result['status_code'] = response.status_code
@@ -181,9 +184,10 @@ class HTTPModule(ChainedModule):
 
     def execute(self, url):
         
+        found = False
         for request in self.requests:
             result = self.send_request(request, url)
-            found  = self.evaluate_matchers(request, result)
+            found  |= self.evaluate_matchers(request, result)
 
         return found
 

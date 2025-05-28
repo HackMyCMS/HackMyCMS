@@ -22,6 +22,14 @@ class ChainedKeys:
     def __init__(self, value=None):
         self._value = value
 
+class Argument:
+
+    def __init__(self, name, shortcut=None, arg_type=None, default=None):
+        self.name     = name
+        self.shortcut = shortcut
+        self.arg_type = arg_type
+        self.default  = default
+
 class _Module_Meta(ABCMeta):
 
     # Black magic, called when a module's class is imported
@@ -62,6 +70,7 @@ class ChainedModule(metaclass=_Module_Meta):
             return
 
         # group = parser.add_argument_group(getattr(self, "__module_name__"))
+        parser.description = self.__module_desc__
         for param_name, param in sig.parameters.items():
             if param_name in ['env']:
                 continue
@@ -102,8 +111,8 @@ class ChainedModule(metaclass=_Module_Meta):
     
     def set_links(self, **links):
         for var, link in links.items():
-            if link is not None:
-                assert isinstance(link, ChainedKeys), "Invalid link" 
+            # if link is not None:
+            #     assert isinstance(link, ChainedKeys), "Invalid link" 
             setattr(self, var, link)
 
     def __getattribute__(self, name):
@@ -139,6 +148,8 @@ def _import_file(import_file:str) -> bool:
     return False
 
 def load_modules(file:str=""):
+    sys.path.insert(0, os.environ['PYTHONPATH'])
+
     if file is None:
         file = ""
 
@@ -152,22 +163,7 @@ def load_modules(file:str=""):
 
         return
     
-    path = os.environ['PYTHONPATH'] + "hmc/modules/" + file.replace('.', '/')
-    t_path = path
-    u_path = path
-
-    # _, ext = os.path.splitext(path)
-    # if ext != '.py':
-    #     t_path = path + '.py'
-
-    # if os.path.isfile(t_path):
-    #     found = _import_file(t_path)
-    #     if not found:
-    #         log.error(f"""Invalid file {t_path}""")
-    #     elif _last_module:
-    #         _module_list.append(_last_module.pop())
-
-    #     return
+    path = os.path.join(os.environ['PYTHONPATH'], "hmc/modules/", file.replace('.', '/'))
 
     if not os.path.isdir(path):
         path = '/'.join(path.split('/')[:-1])
@@ -175,8 +171,8 @@ def load_modules(file:str=""):
         if not os.path.isdir(path):
             log.error(f"""Invalid file {path}""")
             return
-    else:
-        file = ''
+    # else:
+    #     file = ''
 
     _ignore = [
         "__init__.py",
