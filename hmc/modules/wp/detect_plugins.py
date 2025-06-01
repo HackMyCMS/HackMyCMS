@@ -5,23 +5,31 @@ import logging
 from urllib.parse import urlparse
 from argparse import _ArgumentGroup
 
-from hmc.modules.http_module import HTTPModule
+from hmc.modules import Module
 
 log = logging.getLogger("hmc")
 
-class WPDetectPlugins(HTTPModule):
-    __module_name__ = "detect_plugins"
-    __module_desc__ = "Scan the given url to find plugins revealed in the page's code"
+class WPDetectPlugins(Module):
 
-    def __init__(self, *args, urls={}, wp_plugins={}, is_wordpress=None, **kwargs):
-        super().__init__(urls=urls, wp_plugins=wp_plugins, start=is_wordpress, *args, **kwargs)
+    module_name = "detect_plugins"
+    module_desc = "Scan the given url to find plugins revealed in the page's code"
+
+    keys = [
+        "is_wordpress",
+        "wp_plugins",
+        "scope"
+    ]
+
+    def __init__(self, env=None, print_logs=True, is_wordpress=None, wp_plugins={}, scope=None):
+        super().__init__(env, print_logs)
+        self.pipes.add_pipes(is_wordpress=is_wordpress, wp_plugins=wp_plugins, scope=scope)
 
     def _verify_plugin(self, url, plugin_name):
-        if plugin_name in self.wp_plugins:
+        if plugin_name in self.pipes.wp_plugins:
             return
 
-        self.wp_plugins[plugin_name] = ''        
-    
+        self.pipes.wp_plugins[plugin_name] = ''        
+
         up = urlparse(url)
         path = "%s://%s/wp-content/plugins/%s/readme.txt" % (up.scheme, up.hostname, plugin_name)
 
@@ -32,7 +40,7 @@ class WPDetectPlugins(HTTPModule):
 
         version = re.findall(r'Stable tag: ((\d+\.?)+)', page.text)
         if version:
-            self.wp_plugins[plugin_name] = version[0][0]
+            self.pipes.wp_plugins[plugin_name] = version[0][0]
             self.log_success("%s %s detected !", plugin_name, version[0][0])
         else:
             self.log_success("%s detected !", plugin_name)
@@ -41,8 +49,8 @@ class WPDetectPlugins(HTTPModule):
 
         if url:
             path = [url]
-        elif self.urls:
-            path = list(self.urls.keys())
+        elif self.pipes.scope:
+            path = list(self.pipes.scope.keys())
         else:
             log.error("No url found")
             return False
@@ -60,7 +68,3 @@ class WPDetectPlugins(HTTPModule):
                 self._verify_plugin(url, plugin)
             
         return True      
-
-    def add_arguments(self, parser:_ArgumentGroup):
-        parser.description = self.__module_desc__
-        parser.add_argument('-u', '--url', help='URL to scan', default=None)

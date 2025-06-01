@@ -6,19 +6,33 @@ import logging
 from urllib.parse import urlparse, urljoin
 from argparse import ArgumentParser
 
-from hmc.modules import ChainedModule
+from hmc.modules import Module, Argument
 
 log = logging.getLogger("hmc")
 
-class HTTPMap(ChainedModule):
-    __module_name__ = "map"
-    __module_desc__ = "Map a site"
+class HTTPMap(Module):
+    module_name = "map"
+    module_desc = "Map a site"
 
-    def __init__(self, env, web_pages={}, *args, **kwargs):
-        super().__init__(env, web_pages=web_pages, *args, **kwargs)
+    args = [
+        Argument("domain", desc="The domain to scan"),
+        Argument("--http", desc="Use HTTP instead of HTTPS", arg_type=bool, default=False)
+    ]
+
+    keys = [
+        "page_list"
+    ]
+
+    def __init__(self, env=None, page_list={}):
+        super().__init__(env)
+
+        self.pipes.add_pipes(page_list=page_list)
 
     def printProgressBar (self, url, path, failed):
-        iteration = len(self.web_pages) + 1
+        if not self.print_logs:
+            return
+
+        iteration = len(self.pipes.page_list) + 1
         total = iteration + len(path) + len(failed)
 
         prefix = "[%i/%i] %s" % (iteration, total, urlparse(url).path)
@@ -49,16 +63,17 @@ class HTTPMap(ChainedModule):
         bar = fill * filledLength + '-' * (length - filledLength)
         print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
 
-    def execute(self, domain):
+    def execute(self, domain:str, http:bool=False):
 
-        base_url = "https://%s/" % domain
+        scheme = "http" if http else "https"
+        base_url = "%s://%s/" % (scheme, domain)
 
         self.log_success("Scanning %s", base_url)
 
         path = [base_url]
 
-        if self.web_pages is None:
-            self.web_pages = {}
+        if self.pipes.page_list is None:
+            self.pipes.page_list = {}
 
         self.max_len = 0
         self.d_time = []
@@ -70,13 +85,13 @@ class HTTPMap(ChainedModule):
             self.printProgressBar(url, path, failed)
             
             page = self.env.get(url)
-            self.web_pages[url] = None
+            self.pipes.page_list[url] = None
             if not page:
                 failed.append(url)
                 self.log_failure(urlparse(url).path)
                 continue
             
-            self.web_pages[url] = page.status_code
+            self.pipes.page_list[url] = page.status_code
 
             result_txt = "%i - %s" % (page.status_code, urlparse(url).path)
             
@@ -91,18 +106,8 @@ class HTTPMap(ChainedModule):
                     link = link[:-1]
 
                 parsed = urljoin(base_url, link)
-                # file_name, ext = os.path.splitext(url_path)
-                # if ext not in ['', 'html', 'php']:
-                #     continue
-
-                # TODO : Change
-                # p = urlparse(parsed)
-                # parsed = urljoin(parsed, p.path)
-                
-                if parsed not in path and parsed not in self.web_pages and parsed not in failed:
-                    # print(parsed)
+                if parsed not in path and parsed not in self.pipes.page_list and parsed not in failed:
                     path.append(parsed)  
-                    # self.log_success("\t-> %s", url_path)    
             
             self.log_success(result_txt + ' ' * (self.max_len + 29 - len(result_txt)))
         
@@ -110,5 +115,5 @@ class HTTPMap(ChainedModule):
 
         return True      
 
-    def add_arguments(self, parser):
-        parser.add_argument('domain', help='Target domain')
+    # def add_arguments(self, parser):
+    #     parser.add_argument('domain', help='Target domain')

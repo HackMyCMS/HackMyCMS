@@ -1,14 +1,35 @@
+import os
 import re
+import yaml
 import logging
 
-from argparse import ArgumentParser
 from urllib.parse import urlparse
 
-from hmc.modules import ChainedModule
+from hmc.modules import Module, Argument
+
+__all__ = [
+    "YAMLModule"
+]
 
 log = logging.getLogger("hmc")
 
-def complete_path(path:str, url:str=None):
+YAML_PATH = os.path.join(os.environ["PYTHONPATH"], "discovery")
+
+def _open_yaml_file(file:str):
+    file_name, file_ext = os.path.splitext(file)
+
+    file_path = file
+    if not file_ext or file_ext not in ['.yaml']:
+        # Search in discovery
+        path = file.replace('.', '/') + '.yaml'
+        file_path = os.path.join(YAML_PATH, path)
+
+    with open(file_path, 'r') as f:
+        data = yaml.load(f, Loader=yaml.SafeLoader)
+
+    return data
+
+def _complete_path(path:str, url:str=None):
     if not url:
         return path
 
@@ -17,7 +38,7 @@ def complete_path(path:str, url:str=None):
     port = pu.port if pu.port else ("443" if pu.scheme == "https" else "80")
 
     replacement = {
-        "BaseURL"   : pu.geturl()[:-1],
+        "BaseURL"   : pu.geturl(),
         "RootURL"   : pu.scheme + "://" + pu.hostname + (':' + pu.port if pu.port else ""),
         "Hostname"  : pu.hostname + (':' + pu.port if pu.port else ""),
         "Host"      : pu.hostname,
@@ -32,7 +53,7 @@ def complete_path(path:str, url:str=None):
     
     return path
 
-def evaluate_word(matcher, text) -> bool:
+def _evaluate_word(matcher, text) -> bool:
     words_list = matcher.get('words', [])
     condition = matcher.get('condition', "or")
 
@@ -42,7 +63,7 @@ def evaluate_word(matcher, text) -> bool:
         result = (result and found) if condition == 'and' else (result or found)
     return result
 
-def evaluate_regex(matcher, text) -> bool:
+def _evaluate_regex(matcher, text) -> bool:
     regex_list = matcher.get('regex', [])
     condition = matcher.get('condition', "or")
 
@@ -55,37 +76,42 @@ def evaluate_regex(matcher, text) -> bool:
         result = (result and found) if condition == 'and' else (result or found)
     return result
 
-def evaluate_status(matcher, status) -> bool:
+def _evaluate_status(matcher, status) -> bool:
     return status == 200
 
-class HTTPModule(ChainedModule):
-    # __module_name__ = "http_module"
-    __module_desc__ = "Send HTTP requests"
 
-    # requests = [
-    #     {
-    #         'method': 'GET',
-    #         'path': [
-    #             "{{BaseURL}}"
-    #         ],
-    #         'matchers': [
-    #             {
-    #                 'type': 'regex',
-    #                 'regex': [
-    #                     "www.*.org"
-    #                 ],
-    #                 'part': 'body_1'
-    #             }
-    #         ]
-    #     }
-    # ]
+class YAMLModule(Module):
+    """
+    Convert YAML file following the nuclei convention to an HMC module
+    """
 
-    requests = []
+    module_name = "yaml"
+    module_desc = "YAML default module"
 
-    def __init__(self, env, update:bool=False, urls=None, *args, **kwargs):
-        super().__init__(env, urls=urls, *args, **kwargs)
+    args = [
+        Argument('--url', '-u', desc="The target URL", default=None),
+        Argument("--yaml-file", "-f", desc="The yaml file to convert", default=None)
+    ]
 
-        self.update = update
+    keys = [
+        "condition",
+        "output",
+        "scope"
+    ]
+
+    def __init__(self, env=None, print_logs=True, file_path=None, condition=None, output=False, scope={}):
+        super().__init__(env, print_logs=print_logs)
+
+        self.pipes.add_pipes(condition=condition, output=output, scope=scope)
+
+        self._name = None
+        self.update = False
+
+        self.requests = []
+        if file_path:
+            yaml_data = _open_yaml_file(file_path)
+            self.requests = yaml_data.get('http', [])
+            self._name = yaml_data.get('id')
 
     def get_method(self, request):
         implemented_methods = {
@@ -110,7 +136,7 @@ class HTTPModule(ChainedModule):
 
         result = []
         for p in path:
-            result.append(complete_path(p, url))
+            result.append(_complete_path(p, url))
             
         return result
 
@@ -158,9 +184,9 @@ class HTTPModule(ChainedModule):
         result = matchers_condition == 'and'
         for matcher in matchers:
             types = {
-                'word'  : evaluate_word,
-                'regex' : evaluate_regex,
-                'status': evaluate_status
+                'word'  : _evaluate_word,
+                'regex' : _evaluate_regex,
+                'status': _evaluate_status
             }
 
             matcher_type = matcher.get("type")
@@ -182,14 +208,35 @@ class HTTPModule(ChainedModule):
 
         return result
 
-    def execute(self, url):
+    def execute(self, url=None, yaml_file:str=None):
+        yaml_data = None
+        if yaml_file:
+            yaml_data = _open_yaml_file(yaml_file)
+            self.requests = yaml_data.get('http', [])
+            self._name = yaml_data.get('id')
+
+        # TODO : evaluate entry
+        if url:
+            scope = [url]
+        elif self.pipes.scope:
+            scope = self.pipes.scope
+        else:
+            log.error("No url given")
+            return False
+
+        for url in scope:
+            for request in self.requests:
+                result = self.send_request(request, url)
+                found  = self.evaluate_matchers(request, result)
+                if found:
+                    self.pipes.output = True
+                    self.log_success("%s : OK", self._name)
+                    return True
+
+        self.log_failure("%s : KO", self._name)
+        self.pipes.output = False
+        return False
         
-        found = False
-        for request in self.requests:
-            result = self.send_request(request, url)
-            found  |= self.evaluate_matchers(request, result)
-
-        return found
-
-    def add_arguments(self, parser):
-        parser.add_argument('-u', '--url', help='Target URL')
+    def check_activation(self):
+        print(self.pipes.condition)
+        return self.pipes.condition is None or self.pipes.condition

@@ -3,133 +3,16 @@ import sys
 import logging
 
 from abc import ABCMeta, abstractmethod
+from enum import Enum
 from inspect import signature, Signature
 from typing import Any
 
-from ..utils.environment import Environment
+from ..utils.environment import Environment, PipeSet
 
 log = logging.getLogger("hmc")
 
 _modules = {}
-_last_module = []
-
-_module_list = []
-_directories = []
-
-class ChainedKeys:
-    _value      = None
-    
-    def __init__(self, value=None):
-        self._value = value
-
-class Argument:
-
-    def __init__(self, name, shortcut=None, arg_type=None, default=None):
-        self.name     = name
-        self.shortcut = shortcut
-        self.arg_type = arg_type
-        self.default  = default
-
-class _Module_Meta(ABCMeta):
-
-    # Black magic, called when a module's class is imported
-    def __new__(cls, name, bases, ns):
-        c = super(_Module_Meta, cls).__new__(cls, name, bases, ns)
-
-        # Get the __module_name__ composant from the module
-        name = ns.get("__module_name__")    # ns = NameSpace, see https://docs.python.org/3/tutorial/classes.html#python-scopes-and-namespaces
-        if name:
-            _modules[name] = c  # Add the module to the list if __module_name__ is defined
-            _last_module.append(c)
-
-        # Super important, DO NOT REMOVE
-        return c
-
-class ChainedModule(metaclass=_Module_Meta):
-
-    __module_desc__ = "Parent class for chained modules"
-
-    env = Environment()
-    keys = []
-
-    _keys = {}
-
-    def __init__(self, env:Environment=None, start=None, **links):
-        
-        if env is not None:
-            self.env = env
-
-        self.set_links(start=start, **links)
-
-        # for key in self.keys:
-        #     self._keys[key] = ChainedKeys()
-
-    def add_arguments(self, parser) -> None:
-        sig = signature(self.execute)
-        if not sig.parameters.items():
-            return
-
-        # group = parser.add_argument_group(getattr(self, "__module_name__"))
-        parser.description = self.__module_desc__
-        for param_name, param in sig.parameters.items():
-            if param_name in ['env']:
-                continue
-
-            sup_args = {}
-            if param.default is not param.empty:
-                sup_args["default"] = param.default
-            
-            if param.annotation is bool or isinstance(param.default, bool):
-                if param.default is not param.empty and param.default:
-                    sup_args["action"] = "store_false"
-                else:
-                    sup_args["action"] = "store_true"
-            parser.add_argument('--%s' % param_name, **sup_args)
-
-    def run(self, kwargs):
-        args = {}
-        
-        sig = signature(self.execute)
-        for param_name, param in sig.parameters.items():
-            val = kwargs.get(param_name)
-            if val is not None:
-                args[param_name] = val
-        
-        self.execute(**args)
-
-    def execute(self) -> bool:
-        return True    
-        
-    def check_activation(self) -> bool:
-        return self.start is None or self.start
-
-    def log_success(self, msg:str, *args):
-        log.success('(' + self.__module_name__ + ') ' + msg, *args)
-        
-    def log_failure(self, msg:str, *args):
-        log.failure('(' + self.__module_name__ + ') ' + msg, *args)
-    
-    def set_links(self, **links):
-        for var, link in links.items():
-            # if link is not None:
-            #     assert isinstance(link, ChainedKeys), "Invalid link" 
-            setattr(self, var, link)
-
-    def __getattribute__(self, name):
-        var = super().__getattribute__(name)
-        if not isinstance(var, ChainedKeys):
-            return var
-        return var._value
-    
-    def __setattr__(self, name, value):
-        if name in self.__dict__:
-            var = self.__dict__[name]
-        else:
-            return super().__setattr__(name, value)
-        
-        if not isinstance(var, ChainedKeys):
-            return super().__setattr__(name, value)
-        var._value = value
+_path    = {}
 
 def _import_file(import_file:str) -> bool:
     file_name, ext = os.path.splitext(os.path.basename(import_file))
@@ -143,62 +26,31 @@ def _import_file(import_file:str) -> bool:
             log.debug(f"""{import_file} successfully imported""")
             return True
         except Exception as e:
-            print(e)
             log.warning(f"""error while importing {import_file} : {e}""")
     return False
 
-def load_modules(file:str=""):
-    sys.path.insert(0, os.environ['PYTHONPATH'])
+def _get_lib(base, path:str):
+    s = path.split('.')
+    c = getattr(base, 'modules', None)
 
-    if file is None:
-        file = ""
+    for p in s:
+        if not c:
+            return None
+        c = getattr(c, p, None)
+    return c
 
-    if os.path.isfile(file):
-        found = _import_file(file)
-        
-        if not found:
-            log.error(f"""Invalid file {file}""")
-        elif _last_module:
-            _module_list.append(_last_module.pop())
+def _get_path(path:str, update=False):
+    s = path.split('.')
+    p = _path
 
-        return
-    
-    path = os.path.join(os.environ['PYTHONPATH'], "hmc/modules/", file.replace('.', '/'))
-
-    if not os.path.isdir(path):
-        path = '/'.join(path.split('/')[:-1])
-        file = '.'.join(file.split('.')[:-1])
-        if not os.path.isdir(path):
-            log.error(f"""Invalid file {path}""")
-            return
-    # else:
-    #     file = ''
-
-    _ignore = [
-        "__init__.py",
-        "__pycache__"
-    ]
-
-    for f in os.listdir(path):
-        fpath = os.path.join(path, f)
-        file_name, ext = os.path.splitext(f)
-        if os.path.isfile(fpath) and f not in _ignore:
-            # _import_file(f)
-            if ext in [".py", ".pyc"]:
-                try:
-                    if file != '' and file[-1] != '.':
-                        file += '.'
-                    __import__("hmc.modules." + file + file_name)
-
-                    if _last_module:
-                        _module_list.append(_last_module.pop())
-
-                    log.debug(f"""{f} successfully imported""")
-                except Exception as e:
-                    print(e)
-                    log.warning(f"""error while importing {f} : {e}""")
-        elif os.path.isdir(fpath):
-            _directories.append(file_name)
+    for x in s:
+        if not x in p:
+            if update:
+                p[x] = {}
+            else:
+                return None
+        p = p[x]
+    return p
 
 def get_module(name : str):
     """
@@ -217,5 +69,329 @@ def get_module(name : str):
     except KeyError:
         return None
 
-def get_module_list():
-    return _module_list
+
+def load_modules(path:str="") -> dict:
+    if os.path.isfile(path):
+        found = _import_file(path)
+        return {}
+    
+    full_path = os.path.join(os.environ['PYTHONPATH'], "hmc/modules/", path.replace('.', '/'))
+
+    if not os.path.isdir(full_path):
+        full_path = '/'.join(full_path.split('/')[:-1])
+        if not os.path.isdir(full_path):
+            log.error(f"""Invalid file {path}""")
+            return {}
+        path = '.'.join(path.split('.')[:-1])
+
+    folder = _get_path(path, update=True)
+    for d in os.listdir(full_path):
+        if os.path.isdir(os.path.join(full_path, d)) and d not in ['__pycache__']:
+            folder[d] = "dir"
+
+    try:
+        hmc = __import__("hmc.modules" + ('.' if path else '') + path)
+    except Exception as e:
+        log.error("Unable to load %s : %s", path, str(e))
+        return folder
+
+    modules = _get_lib(hmc, path)
+    if not modules:
+        return folder
+
+    for module in modules.__all__:
+        mod = getattr(modules, module, None)
+        if not mod:
+            continue
+        loaded = get_module(getattr(mod, 'module_name', ''))
+        if not loaded:
+            continue
+        folder[mod.module_name] = mod.module_desc
+    
+    return folder
+
+def list_modules(path:str='') -> dict:
+    p = _get_path(path)
+    if p is None:
+        p = load_modules(path)
+    return p
+
+class Argument:
+    """
+    Store arguments
+    :param str name: Name of the argument
+    :param str short_name:Short name for the argument
+    :param str desc: Description of the argument
+    :param Any default: Default value of the argument
+    :param Type arg_type: Type of the argument
+    """
+
+    _valid_attr = [
+        "default",
+        "arg_type"
+    ]
+
+    def __init__(self, name, short_name:str=None, desc="", **kwargs):
+        self.name       = name
+        self.short_name = short_name
+        self.desc       = desc
+        self.attr       = {}
+
+        self._value = None
+        self._ready = False
+
+        for arg, value in kwargs.items():
+            if not arg in self._valid_attr:
+                raise ValueError("Invalid argument '%s'" % arg)
+            self.attr[arg] = value
+
+            if arg == 'default':
+                self.value = value
+        
+    @property
+    def value(self) -> Any:
+        return self._value
+
+    @value.setter
+    def value(self, value:Any):
+        self._value = value
+        self._ready = True
+
+    @property
+    def ready(self) -> bool:
+        return self._ready
+
+    @property
+    def key(self):
+        n = self.name if self.name[:2] != '--' else self.name[2:]
+        return n.replace('-', '_')
+
+    @property
+    def names(self):
+        if self.short_name:
+            return [self.name, self.short_name]
+        return [self.name]
+
+    def __eq__(self, o:str) -> bool:
+        return self.key == o
+
+class ParserArgument(Argument):
+    """
+    Store arguments
+    :param str name: Name of the argument
+    :param str description: Description of the argument
+    :param Any default: Default value of the argument
+    :param Type arg_type: Type of the argument
+    :param str shortcut: Simplification of the argument (ex 'url' -> 'u')
+    """
+
+    _valid_attr = [
+        "default",
+        "arg_type",
+        "shortcut"
+    ]
+
+class ModuleState(Enum):
+    INITIAL = 0
+    READY   = 1
+    RUNNING = 2
+    SUCCESS = 3
+    FAILED  = 4
+    ERROR   = 5
+
+class _Module_Meta(ABCMeta):
+
+    # Black magic, called when a module's class is imported
+    def __new__(cls, name, bases, ns):
+        c = super(_Module_Meta, cls).__new__(cls, name, bases, ns)
+
+        # Get the 'module_name' composant from the module
+        name = ns.get("module_name")    # ns = NameSpace, see https://docs.python.org/3/tutorial/classes.html#python-scopes-and-namespaces
+        if name:
+            _modules[name] = c  # Add the module to the list if module_name is defined
+
+        # Return the object
+        return c
+
+class Module(metaclass=_Module_Meta):
+    """
+    Parent class to implement Module
+    :param Environment env: The Environment to use
+    :param bool print_logs: If results logs should be printed
+
+    Variables:
+    :param str module_name: Name of the module
+    :param str module_desc: Description of the module
+    :param str module_auth: Author of the module
+
+    :param list<Argument> args: Detailed Argument for the execute() function
+    :param list<str> keys: Names for the module's pipes
+    """
+
+    module_name = ""                                    # Name of the module
+    module_desc = "Parent class for chained modules"    # Description of the module
+    module_auth = "Mageos"                              # Author of the module
+
+    args:list[Argument] = []                            # Detailed Argument for the execute() function
+    keys:list[str]      = []                            # Names for the module's pipes
+
+    def __init__(self, env:Environment=None, print_logs:bool=True):
+        self.env        = env
+        self.print_logs = print_logs
+        self.state      = ModuleState.INITIAL
+
+        self.pipes = PipeSet(self.keys)
+        
+        self._init_arguments()
+
+    def get_arguments(self) -> list[Argument]:
+        """
+        :return: The list of arguments defined in self.args
+        """
+        return self.args
+
+    def set_arguments(self, **kwargs) -> None:
+        """
+        Set the module's arguments
+        """
+
+        ready = True
+        for arg in self.args:
+            if arg.key in kwargs:
+                arg.value = kwargs[arg.key]
+            ready = ready and arg.ready
+
+        if ready:
+            self.state = ModuleState.READY
+
+    def run(self) -> None:
+        if self.state != ModuleState.READY:
+            log.error("Cannot run module : %s not in state 'ready'", self.module_name)
+            return
+        self.state = ModuleState.RUNNING
+
+        if self.env is None:
+            self.env = Environment()
+
+        # Get the module's arguments
+        args = {}
+        for arg in self.args:
+            args[arg.key] = arg.value
+        
+        try:
+            success = self.execute(**args)
+            self.state = ModuleState.SUCCESS if success else ModuleState.ERROR
+        except Exception as e:
+            self.state = ModuleState.ERROR
+            log.error("(%s) : %s", self.module_name, str(e))
+
+    def execute(self) -> bool:
+        return True    
+        
+    def check_activation(self) -> bool:
+        return True
+
+    def log_success(self, msg:str, *args):
+        if self.print_logs:
+            log.success('(' + self.module_name + ') ' + msg, *args)
+        
+    def log_failure(self, msg:str, *args):
+        if self.print_logs:
+            log.failure('(' + self.module_name + ') ' + msg, *args)
+    
+    def _init_arguments(self):
+        """Add missing arguments accordind to the execute() function signature"""
+        sig = signature(self.execute)
+        if not sig.parameters.items():
+            return
+        
+        for param_name, param in sig.parameters.items():
+            if param_name in self.args:
+                continue
+
+            default = None if param.default is not param.empty else param.default
+            p_type = None if param.annotation is not param.empty else param.annotation
+            self.args.append(Argument('--' + param_name, arg_type=p_type, default=default))
+
+class Workflow(Module):
+
+    __module_desc__ = "Base workflow"
+
+    def __init__(self, env=None, print_logs=True):
+        super().__init__(env, print_logs)
+
+        self._modules = []
+        self._pipes   = []
+
+        self._activ = []
+        self._done  = []
+        
+        if self.env is None:
+            self.env = Environment()
+   
+        self.init_modules()
+    
+    def init_modules(self):
+        return
+
+    def add_pipe(self, name, value=None):
+        return self.env.pipes.add_pipe(name, value)
+
+    def add_module(self, module):
+        module.env = self.env
+        self._modules.append(module)
+
+    def get_arguments(self) -> None:
+        result = []
+        for arg in self.args:
+            result.append(arg)
+
+        for module in self._modules:
+            for arg in module.args:
+                if arg in result:
+                    log.warning("Argument %s used by multiple modules")
+                    continue
+                result.append(arg)
+
+        return result
+
+    def set_arguments(self, **kwargs):
+        ready = True
+        for module in self._modules:
+            update = {}
+            for arg, value in kwargs.items():
+                if arg in module.args:
+                    update[arg] = value
+            if update:
+                module.set_arguments(**update)
+            ready = ready and module.state == ModuleState.READY
+        
+        for arg in self.args:
+            if arg.key in kwargs:
+                arg.value = kwargs[arg.key]
+            ready = ready and arg.ready
+
+        if ready:
+            self.state = ModuleState.READY
+
+    def _get_activ_modules(self):
+        # TODO : optimize
+        for module in self._modules:
+            if module.check_activation():
+                self._activ.append(module)
+        for module in self._activ:
+            self._modules.remove(module)
+
+    def run(self):
+        self._get_activ_modules()
+        while self._activ:
+            for module in self._activ:
+                try:
+                    module.run()
+                    self._done.append(module)
+                except Exception as e:
+                    log.error("in module '%s' - %s", module.module_name, e)
+            self._activ = []
+            self._get_activ_modules()
+
+        return super().run()
