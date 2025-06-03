@@ -5,7 +5,7 @@ import logging
 from urllib.parse import urlparse
 from argparse import _ArgumentGroup
 
-from hmc.modules import Module
+from hmc.modules import Module, Argument
 
 log = logging.getLogger("hmc")
 

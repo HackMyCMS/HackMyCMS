@@ -18,7 +18,7 @@ class WPScan(Workflow):
 
         self.add_module(HTTPMap(page_list=scope))
         self.add_module(YAMLModule(file_path="wordpress.wordpress_detect", output=wp, scope=scope))
-        # self.add_module(WPDetectPlugins(is_wordpress=wp, scope=scope))
+        self.add_module(WPDetectPlugins(is_wordpress=wp, scope=scope))
 
     def execute(self):
         if self.pipes.wordpress:

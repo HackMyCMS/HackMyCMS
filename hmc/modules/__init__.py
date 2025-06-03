@@ -175,6 +175,12 @@ class Argument:
     def __eq__(self, o:str) -> bool:
         return self.key == o
 
+    def __str__(self):
+        return f'{self.name}{(' ' + self.short_name if self.short_name else '')} : {self.desc}'
+
+    def __repr__(self):
+        return str(self)
+
 class ParserArgument(Argument):
     """
     Store arguments
@@ -192,12 +198,12 @@ class ParserArgument(Argument):
     ]
 
 class ModuleState(Enum):
-    INITIAL = 0
-    READY   = 1
-    RUNNING = 2
-    SUCCESS = 3
-    FAILED  = 4
-    ERROR   = 5
+    INITIAL   = 0
+    READY     = 1
+    RUNNING   = 2
+    COMPLETED = 3
+    FAILED    = 4
+    ERROR     = 5
 
 class _Module_Meta(ABCMeta):
 
@@ -242,6 +248,11 @@ class Module(metaclass=_Module_Meta):
 
         self.pipes = PipeSet(self.keys)
         
+        if not self.args:
+            self.args = []
+        if not self.keys:
+            self.keys = []
+
         self._init_arguments()
 
     def get_arguments(self) -> list[Argument]:
@@ -280,7 +291,7 @@ class Module(metaclass=_Module_Meta):
         
         try:
             success = self.execute(**args)
-            self.state = ModuleState.SUCCESS if success else ModuleState.ERROR
+            self.state = ModuleState.COMPLETED if success else ModuleState.ERROR
         except Exception as e:
             self.state = ModuleState.ERROR
             log.error("(%s) : %s", self.module_name, str(e))
