@@ -14,57 +14,46 @@ class WPDetectPlugins(Module):
     module_name = "detect_plugins"
     module_desc = "Scan the given url to find plugins revealed in the page's code"
 
-    keys = [
-        "is_wordpress",
-        "wp_plugins",
-        "scope"
-    ]
-
-    def __init__(self, env=None, print_logs=True, is_wordpress=None, wp_plugins={}, scope=None):
+    def __init__(self, env=None, print_logs=True, plugins=None):
         super().__init__(env, print_logs)
-        self.pipes.add_pipes(is_wordpress=is_wordpress, wp_plugins=wp_plugins, scope=scope)
+        
+        self._pipes.add_hub('plugins', plugins)
 
-    def _verify_plugin(self, url, plugin_name):
-        if plugin_name in self.pipes.wp_plugins:
-            return
+        self._plugins = {}
 
-        self.pipes.wp_plugins[plugin_name] = ''        
+    async def _verify_plugin(self, url, plugin_name):
+        if plugin_name in self._plugins:
+            return None
+
+        # self.pipes.wp_plugins[plugin_name] = ''        
+        self._plugins[plugin_name] = ''
 
         up = urlparse(url)
         path = "%s://%s/wp-content/plugins/%s/readme.txt" % (up.scheme, up.hostname, plugin_name)
 
-        page = self.env.get(path)
-        if not page or page.status_code != 200:
+        page = await self.env.get(path)
+        if not page or page.status != 200:
             self.log_success("%s detected !", plugin_name)
+            return ''
+
+        version = re.findall(r'Stable tag: ((\d+\.?)+)', page.body)
+        if version:
+            self.log_success("%s %s detected !", plugin_name, version[0][0])
+            self._plugins[plugin_name] = version[0][0]
+            return version[0][0]
+        else:
+            self.log_success("%s detected !", plugin_name)
+            return ''
+
+    async def execute(self, url:str):
+        page = await self.env.get(url)
+        if not page:
             return
 
-        version = re.findall(r'Stable tag: ((\d+\.?)+)', page.text)
-        if version:
-            self.pipes.wp_plugins[plugin_name] = version[0][0]
-            self.log_success("%s %s detected !", plugin_name, version[0][0])
-        else:
-            self.log_success("%s detected !", plugin_name)
+        plugins = re.findall(r'/wp-content/plugins/([^"\'/]+)/', page.body)
 
-    def execute(self, url=None):
-
-        if url:
-            path = [url]
-        elif self.pipes.scope:
-            path = list(self.pipes.scope.keys())
-        else:
-            log.error("No url found")
-            return False
-
-        while path:
-            url = path.pop(0)
-
-            page = self.env.get(url)
-            if not page:
-                continue
-
-            plugins = re.findall(r'/wp-content/plugins/([^"\'/]+)/', page.text)
-
-            for plugin in plugins:
-                self._verify_plugin(url, plugin)
+        for plugin in plugins:
+            version = await self._verify_plugin(url, plugin)
             
-        return True      
+            if version is not None:
+                yield {'plugins': (plugin, version)}

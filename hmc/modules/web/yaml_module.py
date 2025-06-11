@@ -88,30 +88,19 @@ class YAMLModule(Module):
     module_name = "yaml"
     module_desc = "YAML default module"
 
-    args = [
-        Argument('--url', '-u', desc="The target URL", default=None),
-        Argument("--yaml-file", "-f", desc="The yaml file to convert", default=None)
+    module_args = [
+        Argument("yaml_file", "--yaml-file", "-f", desc="The yaml file to convert"),
+        Argument("url", '--url', '-u', desc="The target URL"),
     ]
 
-    keys = [
-        "condition",
-        "output",
-        "scope"
-    ]
-
-    def __init__(self, env=None, print_logs=True, file_path=None, condition=None, output=False, scope={}):
+    def __init__(self, env=None, print_logs=True, file_path=None, result=None):
         super().__init__(env, print_logs=print_logs)
 
-        self.pipes.add_pipes(condition=condition, output=output, scope=scope)
-
-        self._name = None
-        self.update = False
+        self._pipes.add_hub('result', result)
 
         self.requests = []
         if file_path:
-            yaml_data = _open_yaml_file(file_path)
-            self.requests = yaml_data.get('http', [])
-            self._name = yaml_data.get('id')
+            self._args.get('yaml_file').value = file_path
 
     def get_method(self, request):
         implemented_methods = {
@@ -140,7 +129,7 @@ class YAMLModule(Module):
             
         return result
 
-    def send_request(self, request, url=None) -> dict:
+    async def send_request(self, request, url=None, update=False) -> dict:
         result = {}
 
         method = self.get_method(request)
@@ -154,18 +143,18 @@ class YAMLModule(Module):
 
         index = 1
         for p in path:
-            response = method(p, update=self.update, headers=headers, data=body)
+            response = await method(p, update=update, headers=headers, data=body)
             if not response:
                 break
 
             result['text'] = response.text
-            result['status_code'] = response.status_code
+            result['status_code'] = response.status
             result['headers'] = response.headers
-            result['body'] = response.content
+            result['body'] = response.body
 
-            result['status_code_%i' % index] = response.status_code
+            result['status_code_%i' % index] = response.status
             result['headers_%i' % index] = response.headers
-            result['body_%i' % index] = response.content
+            result['body_%i' % index] = response.body
 
             index += 1
 
@@ -208,35 +197,19 @@ class YAMLModule(Module):
 
         return result
 
-    def execute(self, url=None, yaml_file:str=None):
-        yaml_data = None
-        if yaml_file:
-            yaml_data = _open_yaml_file(yaml_file)
-            self.requests = yaml_data.get('http', [])
-            self._name = yaml_data.get('id')
+    async def execute(self, yaml_file:str, url:str):
+        yaml_data = _open_yaml_file(yaml_file)
+        requests = yaml_data.get('http', [])
+        name = yaml_data.get('id')
 
-        # TODO : evaluate entry
-        if url:
-            scope = [url]
-        elif self.pipes.scope:
-            scope = self.pipes.scope
-        else:
-            log.error("No url given")
-            return False
+        for request in requests:
+            result = await self.send_request(request, url)
+            found  = self.evaluate_matchers(request, result)
+            if found:
+                # self.pipes.output = True
+                self.log_success("%s : OK", name)
+                self._pipes.close()
+                return True
 
-        for url in scope:
-            for request in self.requests:
-                result = self.send_request(request, url)
-                found  = self.evaluate_matchers(request, result)
-                if found:
-                    self.pipes.output = True
-                    self.log_success("%s : OK", self._name)
-                    return True
-
-        self.log_failure("%s : KO", self._name)
-        self.pipes.output = False
+        self.log_failure("%s : KO", name)
         return False
-        
-    def check_activation(self):
-        print(self.pipes.condition)
-        return self.pipes.condition is None or self.pipes.condition

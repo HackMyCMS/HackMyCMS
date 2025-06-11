@@ -1,5 +1,6 @@
 import logging
 import argparse
+import asyncio
 
 import hmc.utils.logger
 
@@ -25,7 +26,7 @@ def print_help(parser):
     parser.print_help()
 
 def fill_parser(args:list[Argument], parser:argparse.ArgumentParser):
-    for arg in args:
+    for arg in args.values():
         k = {}
 
         if "arg_type" in arg.attr and arg.attr.get("arg_type") == bool:
@@ -33,7 +34,9 @@ def fill_parser(args:list[Argument], parser:argparse.ArgumentParser):
         if 'default' in arg.attr:
             k['default'] = arg.attr.get("default")
 
-        parser.add_argument(*arg.names, help=arg.desc, **k)
+        keys = arg.keys if arg.keys else [arg.name]
+
+        parser.add_argument(*keys, help=arg.desc, **k)
 
 args, remaining = parser.parse_known_args()
 
@@ -80,6 +83,6 @@ if args.help:
 modules_args = module_parser.parse_args(remaining)
 
 module.set_arguments(**modules_args.__dict__)
-module.run()
+asyncio.run(module.run())
 
 log.debug("HMC done !")

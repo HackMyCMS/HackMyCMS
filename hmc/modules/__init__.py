@@ -1,67 +1,28 @@
-import os
-import sys
 import logging
+import asyncio
+import traceback
 
 from abc import ABCMeta, abstractmethod
 from enum import Enum
 from inspect import signature, Signature
-from typing import Any
+from typing import Any, AsyncGenerator
+from concurrent.futures import ProcessPoolExecutor
 
-from ..utils.environment import Environment, PipeSet
+from ._hmc_import import *
+from ..utils.environment import Environment
+from ..utils.pipes import PipeSet, PipesHub, Pipe
 
 log = logging.getLogger("hmc")
 
 _modules = {}
-_path    = {}
-
-def _import_file(import_file:str) -> bool:
-    file_name, ext = os.path.splitext(os.path.basename(import_file))
-    if ext in [".py", ".pyc"]:
-        try:
-            path = os.path.dirname(import_file)
-            sys.path.append(os.path.abspath(path))
-
-            __import__(file_name)
-
-            log.debug(f"""{import_file} successfully imported""")
-            return True
-        except Exception as e:
-            log.warning(f"""error while importing {import_file} : {e}""")
-    return False
-
-def _get_lib(base, path:str):
-    s = path.split('.')
-    c = getattr(base, 'modules', None)
-
-    for p in s:
-        if not c:
-            return None
-        c = getattr(c, p, None)
-    return c
-
-def _get_path(path:str, update=False):
-    s = path.split('.')
-    p = _path
-
-    for x in s:
-        if not x in p:
-            if update:
-                p[x] = {}
-            else:
-                return None
-        p = p[x]
-    return p
 
 def get_module(name : str):
     """
-    Return the Module's class corresponding to name, based on Module.__module_name__
+    Return the Module's class corresponding to 'name', based on Module.module_name
 
-    Arguments:
-    name    - The name of the searched module
-
-    Return:
-            - The module's class if exist
-            - None if not found
+    :param str name: The module's name
+    :return: The module's class if exist
+    :return: None if not found
     """
 
     try:
@@ -69,48 +30,11 @@ def get_module(name : str):
     except KeyError:
         return None
 
-
-def load_modules(path:str="") -> dict:
-    if os.path.isfile(path):
-        found = _import_file(path)
-        return {}
-    
-    full_path = os.path.join(os.environ['PYTHONPATH'], "hmc/modules/", path.replace('.', '/'))
-
-    if not os.path.isdir(full_path):
-        full_path = '/'.join(full_path.split('/')[:-1])
-        if not os.path.isdir(full_path):
-            log.error(f"""Invalid file {path}""")
-            return {}
-        path = '.'.join(path.split('.')[:-1])
-
-    folder = _get_path(path, update=True)
-    for d in os.listdir(full_path):
-        if os.path.isdir(os.path.join(full_path, d)) and d not in ['__pycache__']:
-            folder[d] = "dir"
-
-    try:
-        hmc = __import__("hmc.modules" + ('.' if path else '') + path)
-    except Exception as e:
-        log.error("Unable to load %s : %s", path, str(e))
-        return folder
-
-    modules = _get_lib(hmc, path)
-    if not modules:
-        return folder
-
-    for module in modules.__all__:
-        mod = getattr(modules, module, None)
-        if not mod:
-            continue
-        loaded = get_module(getattr(mod, 'module_name', ''))
-        if not loaded:
-            continue
-        folder[mod.module_name] = mod.module_desc
-    
-    return folder
-
 def list_modules(path:str='') -> dict:
+    """
+    Get all modules contained in the path
+    """
+
     p = _get_path(path)
     if p is None:
         p = load_modules(path)
@@ -120,7 +44,7 @@ class Argument:
     """
     Store arguments
     :param str name: Name of the argument
-    :param str short_name:Short name for the argument
+    :param list[str] keys: Short names for the argument
     :param str desc: Description of the argument
     :param Any default: Default value of the argument
     :param Type arg_type: Type of the argument
@@ -131,9 +55,9 @@ class Argument:
         "arg_type"
     ]
 
-    def __init__(self, name, short_name:str=None, desc="", **kwargs):
+    def __init__(self, name:str, *keys:str, desc:str="", **kwargs):
         self.name       = name
-        self.short_name = short_name
+        self.keys       = keys
         self.desc       = desc
         self.attr       = {}
 
@@ -161,41 +85,14 @@ class Argument:
     def ready(self) -> bool:
         return self._ready
 
-    @property
-    def key(self):
-        n = self.name if self.name[:2] != '--' else self.name[2:]
-        return n.replace('-', '_')
-
-    @property
-    def names(self):
-        if self.short_name:
-            return [self.name, self.short_name]
-        return [self.name]
-
     def __eq__(self, o:str) -> bool:
-        return self.key == o
+        return self.name == o
 
-    def __str__(self):
-        return f'{self.name}{(' ' + self.short_name if self.short_name else '')} : {self.desc}'
+    def __str__(self) -> str:
+        return f'{self.name} {[key for key in self.keys]} : {self.desc}'
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return str(self)
-
-class ParserArgument(Argument):
-    """
-    Store arguments
-    :param str name: Name of the argument
-    :param str description: Description of the argument
-    :param Any default: Default value of the argument
-    :param Type arg_type: Type of the argument
-    :param str shortcut: Simplification of the argument (ex 'url' -> 'u')
-    """
-
-    _valid_attr = [
-        "default",
-        "arg_type",
-        "shortcut"
-    ]
 
 class ModuleState(Enum):
     INITIAL   = 0
@@ -203,7 +100,6 @@ class ModuleState(Enum):
     RUNNING   = 2
     COMPLETED = 3
     FAILED    = 4
-    ERROR     = 5
 
 class _Module_Meta(ABCMeta):
 
@@ -229,37 +125,29 @@ class Module(metaclass=_Module_Meta):
     :param str module_name: Name of the module
     :param str module_desc: Description of the module
     :param str module_auth: Author of the module
-
-    :param list<Argument> args: Detailed Argument for the execute() function
-    :param list<str> keys: Names for the module's pipes
     """
 
     module_name = ""                                    # Name of the module
     module_desc = "Parent class for chained modules"    # Description of the module
     module_auth = "Mageos"                              # Author of the module
 
-    args:list[Argument] = []                            # Detailed Argument for the execute() function
-    keys:list[str]      = []                            # Names for the module's pipes
+    module_args = []
 
     def __init__(self, env:Environment=None, print_logs:bool=True):
         self.env        = env
         self.print_logs = print_logs
         self.state      = ModuleState.INITIAL
 
-        self.pipes = PipeSet(self.keys)
-        
-        if not self.args:
-            self.args = []
-        if not self.keys:
-            self.keys = []
-
+        self._args = {}
         self._init_arguments()
+        
+        self._pipes = PipeSet(self._args.keys())
 
     def get_arguments(self) -> list[Argument]:
         """
-        :return: The list of arguments defined in self.args
+        Return the module's args
         """
-        return self.args
+        return self._args
 
     def set_arguments(self, **kwargs) -> None:
         """
@@ -267,15 +155,47 @@ class Module(metaclass=_Module_Meta):
         """
 
         ready = True
-        for arg in self.args:
-            if arg.key in kwargs:
-                arg.value = kwargs[arg.key]
+        for arg in self._args.values():
+            if arg.name in kwargs:
+                arg.value = kwargs[arg.name]
             ready = ready and arg.ready
 
         if ready:
             self.state = ModuleState.READY
 
-    def run(self) -> None:
+    def data_received(self, pipe, data) -> bool:
+        pass
+
+    async def wait_for_pipes(self) -> None:
+        while not self._pipes.closed():
+            pipe, data = await self._pipes.read()
+
+            if pipe is None:
+                break
+
+            self.data_received(pipe, data)
+
+            self.set_arguments(**{pipe: data})
+            if self.state in [ModuleState.READY, ModuleState.RUNNING]:
+                await self.run()
+
+                if self.state == ModuleState.FAILED:
+                    return
+
+        self.state = ModuleState.COMPLETED
+        self._pipes.write_eof()
+
+    def _write_on_pipes(self, result:Any):
+        if isinstance(result, dict):
+            for key, value in result.items():
+                self._pipes.write(key, value)
+        else:
+            self._pipes.write("result", result)
+
+    async def run(self) -> Any:
+        """
+        Run the module
+        """
         if self.state != ModuleState.READY:
             log.error("Cannot run module : %s not in state 'ready'", self.module_name)
             return
@@ -286,21 +206,34 @@ class Module(metaclass=_Module_Meta):
 
         # Get the module's arguments
         args = {}
-        for arg in self.args:
-            args[arg.key] = arg.value
+        for arg in self._args.values():
+            args[arg.name] = arg.value
         
         try:
-            success = self.execute(**args)
-            self.state = ModuleState.COMPLETED if success else ModuleState.ERROR
-        except Exception as e:
-            self.state = ModuleState.ERROR
-            log.error("(%s) : %s", self.module_name, str(e))
+            execution = self.execute(**args)
 
-    def execute(self) -> bool:
-        return True    
+            if isinstance(execution, AsyncGenerator):
+                result = []
+                async for value in execution:
+                    result.append(value)
+                    self._write_on_pipes(value)
+            else:
+                result = await execution
+                self._write_on_pipes(result)
+
+            return result
+        except Exception as e:
+            self.state = ModuleState.FAILED
+            log.error("(%s) FAILED : %s", self.module_name, str(e))
+            print(traceback.format_exc())
         
-    def check_activation(self) -> bool:
-        return True
+        return None
+
+    async def execute(self):
+        """
+        Execute the module code. Do not call directly, use Module.run() instead
+        """
+        return None
 
     def log_success(self, msg:str, *args):
         if self.print_logs:
@@ -310,99 +243,188 @@ class Module(metaclass=_Module_Meta):
         if self.print_logs:
             log.failure('(' + self.module_name + ') ' + msg, *args)
     
+    def get_pipe(self, pipe:str) -> Pipe:
+        return self._pipes._pipes.get(pipe)
+
     def _init_arguments(self):
         """Add missing arguments accordind to the execute() function signature"""
+
         sig = signature(self.execute)
         if not sig.parameters.items():
             return
-        
+            
+        for arg in self.module_args:
+            self._args[arg.name] = arg
         for param_name, param in sig.parameters.items():
-            if param_name in self.args:
-                continue
-
-            default = None if param.default is not param.empty else param.default
-            p_type = None if param.annotation is not param.empty else param.annotation
-            self.args.append(Argument('--' + param_name, arg_type=p_type, default=default))
+            if param_name not in self.module_args:
+                default = None if param.default is not param.empty else param.default
+                p_type = None if param.annotation is not param.empty else param.annotation
+                self._args[param_name] = Argument(param_name, '--' + param_name, arg_type=p_type, default=default)
 
 class Workflow(Module):
+    """
+    Main class for chaining modules
+    :param Environment env: The Environment to use
+    :param bool print_logs: If results logs should be printed
+    :param int max_worker: The maximum number of modules to execute in parallels
+    """
 
     __module_desc__ = "Base workflow"
 
-    def __init__(self, env=None, print_logs=True):
+    def __init__(self, env=None, print_logs=True, max_worker=5):
         super().__init__(env, print_logs)
 
-        self._modules = []
-        self._pipes   = []
+        self._max_worker = max_worker
 
-        self._activ = []
-        self._done  = []
-        
+        self._modules   = []
+        self._queue     = []
+        self._workers   = []
+
+        self._completed = asyncio.Event()
+
         if self.env is None:
             self.env = Environment()
    
+        self._conditions = {}
         self.init_modules()
     
     def init_modules(self):
         return
 
-    def add_pipe(self, name, value=None):
-        return self.env.pipes.add_pipe(name, value)
+    def create_hub(self, name, Hub=PipesHub):
+        _hub = Hub(self)
+        self.env._hubs[name] = _hub
+        self._pipes._pipes[name] = Pipe(name, self._pipes)
+        _hub.add_ouptut(name, self)
 
-    def add_module(self, module):
+        return _hub
+
+    def add_module(self, module:Module, entries={}, outputs={}, condition=([], lambda: True)) -> Module:
+        """
+        Add the module to the Workflow list of modules
+        """
         module.env = self.env
+        module.print_logs = False
         self._modules.append(module)
+        
+        for hub, key in entries.items():
+            _hub = self.get_hub(hub)
+            if not _hub:
+                _hub = self.create_hub(hub)
+            self.link(module, hub, key)
 
-    def get_arguments(self) -> None:
-        result = []
-        for arg in self.args:
-            result.append(arg)
+        for hub, key in outputs.items():
+            _hub = self.get_hub(hub)
+            if not _hub:
+                _hub = self.create_hub(hub)
+            module._pipes.add_hub(key, _hub)
 
-        for module in self._modules:
-            for arg in module.args:
-                if arg in result:
-                    log.warning("Argument %s used by multiple modules")
-                    continue
-                result.append(arg)
+        self._conditions[module] = condition
+        _hubs, _func = condition
+        for hub in _hubs:
+            _hub = self.get_hub(hub)
+            if not _hub:
+                _hub = self.create_hub(hub)
+            _hub._modules.append(module)
+
+        return module
+
+    def link(self, obj, hub, key, auto_start=False):
+        _hub = self.env._hubs.get(hub)
+        if _hub is None:
+            log.error("No hub %s", hub)
+            return
+        _hub.add_ouptut(key, obj)
+
+    def set_condition(self, obj, hub, condition):
+        _hub = self.env._hubs.get(hub)
+        if _hub is None:
+            log.error("No hub %s", hub)
+            return
+        _hub.add_condition(obj, condition)
+
+    def get_hub(self, hub_name):
+        return self.env._hubs.get(hub_name)
+
+    def _create_worker(self, obj:Module):
+        assert len(self._workers) < self._max_worker
+
+        _worker = self._loop.create_task(obj.wait_for_pipes())
+        _worker.add_done_callback(self._worker_done)
+        self._workers.append(_worker)
+
+    def _worker_done(self, worker):
+        self._workers.remove(worker)
+        if self._queue:
+            obj = self._queue.pop()
+            self._create_worker(obj)
+        elif not self._workers:
+            self._completed.set()
+            self.state = ModuleState.COMPLETED
+
+    async def wait_until_done(self):
+        while not self._pipes.closed():
+            pipe, data = await self._pipes.read()
+
+            if pipe is None:
+                break
+
+            self.data_received(pipe, data)
+
+        # await self.wait_for_pipes()
+        await self._completed.wait()
+
+    def _check_condition(self, module) -> bool:
+        _cond = self._conditions.get(module)
+        if not _cond:
+            return False
+
+        _hubs, _func = _cond
+        _args = []
+        for hub in _hubs:
+            _hub = self.get_hub(hub)
+            if not _hub:
+                log.error("No hub named %s", hub)
+                return False
+            if len(_hub._contents) == 0:
+                return False
+            _args.append(_hub._contents[-1])
+        return _func(*_args)
+
+    def activate(self, obj:Module) -> bool:
+        """
+        Start a module
+        """
+        if obj.state != ModuleState.INITIAL:
+            return True
+        if not self._check_condition(obj):
+            return False
+
+        if len(self._workers) >= self._max_worker:
+            self._queue.append(obj)
+        else:
+            self._create_worker(obj)
+        
+        return True
+
+    async def run(self):
+        self._loop = asyncio.get_event_loop()
+        
+        result = await super().run()
+        await asyncio.gather(*self._workers)
 
         return result
 
-    def set_arguments(self, **kwargs):
-        ready = True
-        for module in self._modules:
-            update = {}
-            for arg, value in kwargs.items():
-                if arg in module.args:
-                    update[arg] = value
-            if update:
-                module.set_arguments(**update)
-            ready = ready and module.state == ModuleState.READY
-        
-        for arg in self.args:
-            if arg.key in kwargs:
-                arg.value = kwargs[arg.key]
-            ready = ready and arg.ready
+    # def run(self):
+    #     self._get_activ_modules()
+    #     while self._activ:
+    #         for module in self._activ:
+    #             try:
+    #                 module.run()
+    #                 self._done.append(module)
+    #             except Exception as e:
+    #                 log.error("in module '%s' - %s", module.module_name, e)
+    #         self._activ = []
+    #         self._get_activ_modules()
 
-        if ready:
-            self.state = ModuleState.READY
-
-    def _get_activ_modules(self):
-        # TODO : optimize
-        for module in self._modules:
-            if module.check_activation():
-                self._activ.append(module)
-        for module in self._activ:
-            self._modules.remove(module)
-
-    def run(self):
-        self._get_activ_modules()
-        while self._activ:
-            for module in self._activ:
-                try:
-                    module.run()
-                    self._done.append(module)
-                except Exception as e:
-                    log.error("in module '%s' - %s", module.module_name, e)
-            self._activ = []
-            self._get_activ_modules()
-
-        return super().run()
+    #     return super().run()

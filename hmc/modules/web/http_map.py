@@ -13,26 +13,18 @@ log = logging.getLogger("hmc")
 class HTTPMap(Module):
     module_name = "map"
     module_desc = "Map a site"
+    module_auth = "Mageos"
 
-    args = [
+    module_args = [
         Argument("domain", desc="The domain to scan"),
-        Argument("--http", desc="Use HTTP instead of HTTPS", arg_type=bool, default=False)
+        Argument("http", "--http", desc="Use HTTP instead of HTTPS", arg_type=bool, default=False)
     ]
 
-    keys = [
-        "page_list"
-    ]
-
-    def __init__(self, env=None, page_list={}):
-        super().__init__(env)
-
-        self.pipes.add_pipes(page_list=page_list)
-
-    def printProgressBar (self, url, path, failed):
+    def printProgressBar (self, url, path, found, failed):
         if not self.print_logs:
             return
 
-        iteration = len(self.pipes.page_list) + 1
+        iteration = len(found) + 1
         total = iteration + len(path) + len(failed)
 
         prefix = "[%i/%i] %s" % (iteration, total, urlparse(url).path)
@@ -63,7 +55,7 @@ class HTTPMap(Module):
         bar = fill * filledLength + '-' * (length - filledLength)
         print(f'\r{prefix} |{bar}| {percent}% {suffix}', end = printEnd)
 
-    def execute(self, domain:str, http:bool=False):
+    async def execute(self, domain:str, http:bool=False):
 
         scheme = "http" if http else "https"
         base_url = "%s://%s/" % (scheme, domain)
@@ -72,28 +64,27 @@ class HTTPMap(Module):
 
         path = [base_url]
 
-        if self.pipes.page_list is None:
-            self.pipes.page_list = {}
-
         self.max_len = 0
         self.d_time = []
         
+        found  = []
         failed = []
         while path:
             url = path.pop(0)
 
-            self.printProgressBar(url, path, failed)
+            self.printProgressBar(url, path, found, failed)
             
-            page = self.env.get(url)
-            self.pipes.page_list[url] = None
+            page = await self.env.get(url)
+            # self.pipes.page_list[url] = None
             if not page:
                 failed.append(url)
                 self.log_failure(urlparse(url).path)
                 continue
             
-            self.pipes.page_list[url] = page.status_code
+            found.append(url)
+            # self.pipes.page_list[url] = page.status_code
 
-            result_txt = "%i - %s" % (page.status_code, urlparse(url).path)
+            result_txt = "%i - %s" % (page.status, urlparse(url).path)
             
             links  = re.findall(r'<a .*?href=["\'](%s[^"\']+)["\']' % base_url, page.text)
             l_path = re.findall(r'href=["\'](/[^/"\'][^"\'#?]+)["\']', page.text)
@@ -106,14 +97,13 @@ class HTTPMap(Module):
                     link = link[:-1]
 
                 parsed = urljoin(base_url, link)
-                if parsed not in path and parsed not in self.pipes.page_list and parsed not in failed:
+                if parsed not in path and parsed not in found and parsed not in failed:
                     path.append(parsed)  
             
-            self.log_success(result_txt + ' ' * (self.max_len + 29 - len(result_txt)))
-        
-        print()
 
-        return True      
-
-    # def add_arguments(self, parser):
-    #     parser.add_argument('domain', help='Target domain')
+            count = len(found) + len(path) + len(failed) 
+            self.log_success(result_txt + ' ' * (self.max_len + 29 - len(result_txt)))            
+            yield {
+                "url": url,
+                "count": count
+            }
