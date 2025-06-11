@@ -129,7 +129,7 @@ class MyWorkflow(Workflow):
             condition = (['start'], lambda x: x == 'OK')    # Activate the module only if the value of 'start' is "OK"
         )
 
-    def execute(self, start:bool=False):
+    async def execute(self, start:bool=False):
         
         ok = 'OK' if start else 'KO'
 
