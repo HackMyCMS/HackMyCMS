@@ -8,11 +8,11 @@ class SPIPDetect(Module):
     """Détection SPIP via YAMLModule"""
 
     module_name = "detect"
-    module_desc = "SPIP Detection (via YAML rules)"
+    module_desc = "Detect SPIP via YAML rules"
     module_auth = "wayko"
 
     module_args = [
-        Argument("domain", desc="Target domain to scan")
+        Argument("domain", desc="SPIP target URL (e.g. http://example.org)")
     ]
 
     async def execute(self, domain):

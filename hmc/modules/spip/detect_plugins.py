@@ -7,11 +7,11 @@ log = logging.getLogger("hmc")
 
 class SPIPDetectPlugins(Module):
     module_name = "detect_plugins"
-    module_desc = "SPIP Plugins Detection with Version Extraction"
+    module_desc = "Enumerate SPIP plugins + versions"
     module_auth = "wayko"
 
     module_args = [
-        Argument("url", desc="The target SPIP URL to scan for plugins")
+        Argument("url", desc="SPIP target URL (e.g. http://example.org)")
     ]
 
     def __init__(self, env=None, print_logs=True):

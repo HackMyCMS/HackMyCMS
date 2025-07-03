@@ -44,11 +44,11 @@ if args.verbose:
     log.setLevel(logging.DEBUG)
 if args.list:
     modules = list_modules(args.module)
-    for module_name, module_desc in modules.items():
+    for module_name, module_desc in sorted(modules.items()):
         if module_desc == "dir":
             print("-", module_name)
         else:
-            print('[*]', module_name, ':', module_desc)
+            print(f"\033[1;34m[*]\033[0m {module_name:<24} {module_desc}")
     exit(0)
 if not args.module or (not args.module and args.help):
     print(args.module)
@@ -62,8 +62,8 @@ mod_name = args.module.split('.')[-1]
 
 module_cls = get_module(mod_name)
 if module_cls is None:
-    log.error("Module %s not found", args.module)
-    exit(1)
+    print_help(parser)
+    exit(0)
 
 env = Environment(user_agent=args.user_agent)
 

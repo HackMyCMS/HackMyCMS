@@ -6,6 +6,6 @@ from .detect_plugins import SPIPDetectPlugins
 __all__ = [
     "SPIPDetect",
     "SPIPDetectPlugins", 
-    "SPIPAnalyzer",
-    "SPIPPortePlumeRCE"
+    "SPIPPortePlumeRCE",
+    "SPIPAnalyzer"
 ]

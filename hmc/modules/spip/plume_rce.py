@@ -7,11 +7,11 @@ log = logging.getLogger("hmc")
 
 class SPIPPortePlumeRCE(Module):
     module_name = "plume_rce"
-    module_desc = "SPIP Porte Plume Plugin - Remote Code Execution (CVE-2024-7954)"
+    module_desc = "Exploit RCE on Porte Plume (CVE-2024-7954)"
     module_auth = "wayko"
 
     module_args = [
-        Argument("url", desc="Target base URL (e.g., http://example.com)"),
+        Argument("url", desc="SPIP target URL (e.g. http://example.org)"),
         Argument("proxy", "-x", "--proxy", desc="Proxy (e.g., http://127.0.0.1:8080)", default=None),
         Argument("cmd", "-c", "--cmd", desc="Command to execute", default="id")
     ]

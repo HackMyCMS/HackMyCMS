@@ -8,7 +8,7 @@ log = logging.getLogger("hmc")
 
 class SPIPAnalyzer(Workflow):
     module_name = "spip_analyzer"
-    module_desc = "Detect SPIP version, plugins, and test CVE-2024-7954 RCE"
+    module_desc = "Auto-detect SPIP + Plugins + CVE"
     module_auth = "wayko"
 
     module_args = [
