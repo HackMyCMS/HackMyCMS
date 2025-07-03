@@ -299,12 +299,13 @@ class Workflow(Module):
 
         return _hub
 
-    def add_module(self, module:Module, entries={}, outputs={}, condition=([], lambda: True)) -> Module:
+    def add_module(self, module:Module, entries={}, outputs={}, condition=([], lambda: True), printLog=False) -> Module:
         """
         Add the module to the Workflow list of modules
         """
         module.env = self.env
-        module.print_logs = False
+        if not printLog:
+            module.print_logs = False
         self._modules.append(module)
         
         for hub, key in entries.items():

@@ -61,7 +61,7 @@ class Environment:
         self._history[url] = (resp, time.time())
         return resp
 
-    def connect(self, host, http=False):
+    def connect(self, host, http=True):
         assert host not in self._hosts, "Host already connected"
 
         scheme = "http" if http else "https"
@@ -73,15 +73,21 @@ class Environment:
         _session = self._hosts.get(host)
         await _session.close()
 
-    async def get(self, url:str, update:bool=False, params=None, **kwargs) -> Response:
+    async def get(self, url: str, update: bool = False, **kwargs):
+        return await self._request('get', url, update, **kwargs)
+
+    async def post(self, url: str, **kwargs):
+        return await self._request('post', url, True, **kwargs)
+
+    async def _request(self, rtype: str, url: str, update: bool = False, **kwargs) -> Response:
         if not update and self.get_response(url) is not None:
             response = self.get_response(url)
             log.debug("GET %s : %i [cached]", url, response.status)
             return response
 
-        if not 'headers' in kwargs:
+        if 'headers' not in kwargs:
             kwargs['headers'] = {'user-agent': self._user_agent}
-        elif not 'user-agent' in kwargs['headers']:
+        elif 'user-agent' not in kwargs['headers']:
             kwargs['headers']['user-agent'] = self._user_agent
 
         _close = False
@@ -89,11 +95,20 @@ class Environment:
 
         _session = self._hosts.get(up.hostname)
         if not _session:
-            _session = aiohttp.ClientSession(up.scheme + "://" + up.hostname)
+            _session = aiohttp.ClientSession(base_url=up.scheme + "://" + up.hostname)
             _close = True
 
+        full_path = up.path
+        if up.query:
+            full_path += '?' + up.query
+
+        requests = {
+            "get": lambda session, path, **kw: session.get(path, **kw),
+            "post": lambda session, path, **kw: session.post(path, **kw),
+        }
+
         try:
-            async with _session.get(up.path) as response:
+            async with requests.get(rtype)(_session, full_path, **kwargs) as response:
                 text = await response.content.read()
                 try:
                     text = text.decode()
@@ -101,7 +116,8 @@ class Environment:
                     text = ""
 
                 result = Response(response.status, text, response.headers)
-        except:
+        except Exception as e:
+            log.warning("Request failed: %s", e)
             return None
 
         if _close:
