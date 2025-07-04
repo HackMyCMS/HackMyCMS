@@ -14,8 +14,7 @@ parser = argparse.ArgumentParser(
     description='HackMyCMS: A swiss army knife for pentesting CMS', 
     add_help=False
 )
-
-module_action = parser.add_argument('module', nargs='?', help='The HMC module or application to execute', default="")
+parser.add_argument('module', nargs='?', help='The HMC module or application to execute', default="")
 parser.add_argument('-L', '--list', action='store_true', default=False, help="List every Modules and Applications available")
 parser.add_argument('-v', '--verbose', action='store_true', default=False, help='Enable debug log level')
 parser.add_argument('-U', '--user-agent', default=USER_AGENT, help='The user-agent to use')
@@ -45,9 +44,9 @@ if args.verbose:
     log.setLevel(logging.DEBUG)
 if args.list:
     modules = list_modules(args.module)
-    for module_name, module_desc in sorted(modules.items()):
+    for module_name, module_desc in modules.items():
         if module_desc == "dir":
-            print("-", module_name)
+            print(f"\033[1;34m[*]\033[0m {module_name}")
         else:
             print(f"\033[1;34m[*]\033[0m {module_name:<24} {module_desc}")
     exit(0)
@@ -63,19 +62,16 @@ mod_name = args.module.split('.')[-1]
 
 module_cls = get_module(mod_name)
 if module_cls is None:
-    print_help(parser)
-    exit(0)
+    log.error("Module %s not found", args.module)
+    exit(1)
 
 env = Environment(user_agent=args.user_agent)
 
 module = module_cls(env)
 
-parser._remove_action(module_action)
 module_parser = argparse.ArgumentParser(
     prog='hmc %s' % module.module_name,
-    description=module.module_desc,
-    conflict_handler='resolve',
-    parents=[parser]
+    description='HackMyCMS: A swiss army knife for pentesting CMS'
 )
 
 fill_parser(module.get_arguments(), module_parser)

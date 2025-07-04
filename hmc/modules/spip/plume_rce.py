@@ -1,5 +1,14 @@
-import logging
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> AUTOHEADER >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+#   
+#   Title : CVE-2024-7954
+#   Author: Wayko
+#   Information: The porte_plume plugin used by SPIP before 4.30-alpha2, 4.2.13, and 4.1.16 
+#                is vulnerable to an arbitrary code execution vulnerability.
+#
+#<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< AUTOHEADER <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
 import re
+import logging
 from hmc.modules import Module, Argument
 from urllib.parse import urlparse, urlencode, urljoin
 
@@ -7,12 +16,12 @@ log = logging.getLogger("hmc")
 
 class SPIPPortePlumeRCE(Module):
     module_name = "plume_rce"
-    module_desc = "Exploit RCE on Porte Plume (CVE-2024-7954)"
+    module_desc = "RCE on Porte Plume (CVE-2024-7954)"
     module_auth = "wayko"
 
     module_args = [
         Argument("url", desc="SPIP target URL (e.g. http://example.org)"),
-        Argument("proxy", "-x", "--proxy", desc="Proxy (e.g., http://127.0.0.1:8080)", default=None),
+        Argument("proxy", "-p", "--proxy", desc="Proxy (e.g., http://127.0.0.1:8080)", default=None),
         Argument("cmd", "-c", "--cmd", desc="Command to execute", default="id")
     ]
 
