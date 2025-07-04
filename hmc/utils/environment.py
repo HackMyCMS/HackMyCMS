@@ -61,10 +61,10 @@ class Environment:
         self._history[url] = (resp, time.time())
         return resp
 
-    def connect(self, host, http=True):
+    def connect(self, host, https=False):
         assert host not in self._hosts, "Host already connected"
 
-        scheme = "http" if http else "https"
+        scheme = "https" if https else "http"
         self._hosts[host] = aiohttp.ClientSession(scheme + "://" + host)
     
     async def disconnect(self, host):
@@ -103,8 +103,8 @@ class Environment:
             full_path += '?' + up.query
 
         requests = {
-            "get": lambda session, path, **kw: session.get(path, **kw),
-            "post": lambda session, path, **kw: session.post(path, **kw),
+            "get": lambda session, path, **kw: session.get(path, allow_redirects=True, timeout=2, **kw),
+            "post": lambda session, path, **kw: session.post(path, allow_redirects=True, timeout=2, **kw),
         }
 
         try:

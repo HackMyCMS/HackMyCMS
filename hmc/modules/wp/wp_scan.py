@@ -83,6 +83,12 @@ class WPScan(Workflow):
         # print(pipe, data)
         if pipe == 'wp' and data == True:
             self.log_success("Wordpress detected !")
+
+            hello = input("Say hello : ")
+            if hello != "hello":
+                self.stop_tasks()
+                return
+
             self.log_success("")
             self.log_success('Wordpress Plugins:')
         elif pipe == 'plugins':

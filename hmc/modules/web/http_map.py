@@ -11,6 +11,7 @@ from hmc.modules import Module, Argument
 log = logging.getLogger("hmc")
 
 class HTTPMap(Module):
+    
     module_name = "map"
     module_desc = "Map a site"
     module_auth = "Mageos"

@@ -14,8 +14,8 @@ class WPDetectPlugins(Module):
     module_name = "detect_plugins"
     module_desc = "Scan the given url to find plugins revealed in the page's code"
 
-    def __init__(self, env=None, print_logs=True, plugins=None):
-        super().__init__(env, print_logs)
+    def __init__(self, env=None, print_logs=True, plugins=None, **exec_args):
+        super().__init__(env, print_logs, **exec_args)
         
         self._pipes.add_hub('plugins', plugins)
 

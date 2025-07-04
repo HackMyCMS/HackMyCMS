@@ -120,6 +120,7 @@ class Module(metaclass=_Module_Meta):
     Parent class to implement Module
     :param Environment env: The Environment to use
     :param bool print_logs: If results logs should be printed
+    :param dict exec_args: Fixed arguments for the exec function 
 
     Variables:
     :param str module_name: Name of the module
@@ -133,7 +134,7 @@ class Module(metaclass=_Module_Meta):
 
     module_args = []
 
-    def __init__(self, env:Environment=None, print_logs:bool=True):
+    def __init__(self, env:Environment=None, print_logs:bool=True, **exec_args):
         self.env        = env
         self.print_logs = print_logs
         self.state      = ModuleState.INITIAL
@@ -142,6 +143,9 @@ class Module(metaclass=_Module_Meta):
         self._init_arguments()
         
         self._pipes = PipeSet(self._args.keys())
+
+        if exec_args:
+            self.set_arguments(**exec_args)
 
     def get_arguments(self) -> list[Argument]:
         """
@@ -280,6 +284,7 @@ class Workflow(Module):
         self._queue     = []
         self._workers   = []
 
+        self._canceled  = False
         self._completed = asyncio.Event()
 
         if self.env is None:
@@ -347,6 +352,12 @@ class Workflow(Module):
     def get_hub(self, hub_name):
         return self.env._hubs.get(hub_name)
 
+    def stop_tasks(self):
+        self._canceled = True
+        for _worker in self._workers:
+            _worker.cancel()
+        self._pipes.close()
+
     def _create_worker(self, obj:Module):
         assert len(self._workers) < self._max_worker
 
@@ -356,7 +367,8 @@ class Workflow(Module):
 
     def _worker_done(self, worker):
         self._workers.remove(worker)
-        if self._queue:
+
+        if self._queue and not self._canceled:
             obj = self._queue.pop()
             self._create_worker(obj)
         elif not self._workers:

@@ -93,8 +93,8 @@ class YAMLModule(Module):
         Argument("url", '--url', '-u', desc="The target URL"),
     ]
 
-    def __init__(self, env=None, print_logs=True, file_path=None, result=None):
-        super().__init__(env, print_logs=print_logs)
+    def __init__(self, env=None, print_logs=True, file_path=None, result=None, **exec_args):
+        super().__init__(env, print_logs=print_logs, **exec_args)
 
         self._pipes.add_hub('result', result)
 
