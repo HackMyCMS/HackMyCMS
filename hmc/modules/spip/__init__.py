@@ -3,7 +3,6 @@ from .plume_rce import SPIPPortePlumeRCE
 from .bigup_rce import SPIPBigUpRCE
 from .spip_analyzer import SPIPAnalyzer
 from .detect_plugins import SPIPDetectPlugins 
-from .drup import Drupalgeddon2
 
 __all__ = [
     "SPIPDetect",

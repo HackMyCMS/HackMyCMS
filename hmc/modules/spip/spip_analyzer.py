@@ -51,6 +51,8 @@ class SPIPAnalyzer(Workflow):
         self.get_hub("domain").write_eof(domain)
         
         await self.wait_until_done()
+
+        self.log_success("SPIP Analyzer completed !")
         # if self.rce_output is not None:
         #     print(self.rce_output)
         # else: 
@@ -65,11 +67,15 @@ class SPIPAnalyzer(Workflow):
 
             user_cmd = ""
             while not user_cmd:
-                user_cmd = input("> ")
+                try:
+                    user_cmd = input("> ")
+                except EOFError:
+                    print()
+                    user_cmd = "exit"
+                
                 if user_cmd == "exit":
                     self.exec_rce = False
                     self.get_hub("cmd").write_eof()
-                    print("END OF RCE")
                     return
             self.get_hub("cmd").write(user_cmd)
 

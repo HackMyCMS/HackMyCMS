@@ -3,7 +3,7 @@ import aiohttp
 import logging
 
 from typing import Any
-from urllib.parse import urlparse, urlencode
+from urllib.parse import urlparse, urlencode, parse_qs
 
 from hmc.utils.pipes import PipesHub
 
@@ -66,8 +66,13 @@ class Environment:
         assert host not in self._hosts, "Host already connected"
 
         scheme = "https" if https else "http"
-        self._hosts[host] = aiohttp.ClientSession(scheme + "://" + host)
-    
+        _nhost = aiohttp.ClientSession(scheme + "://" + host, proxy=self._proxy)
+        self._hosts[host] = _nhost
+        return _nhost
+
+    def get_session(self, host:str) -> aiohttp.ClientSession:
+        return self._hosts.get(host, None)
+
     async def disconnect(self, host):
         assert host in self._hosts, "Host not connected"
 
@@ -81,16 +86,12 @@ class Environment:
         return await self._request('post', url, True, **kwargs)
 
     async def _request(self, rtype: str, url: str, update: bool = False, **kwargs) -> Response:
-        params = kwargs.get('params', {})
-        url = url.rstrip('/')
-        if params:
-            full_url = url + '?' + urlencode(params)
-        else:
-            full_url = url
+        params = kwargs.get('params')
+        _url_full = url + (('?' + urlencode(params)) if params else '')
 
-        if not update and self.get_response(full_url) is not None:
-            response = self.get_response(full_url)
-            log.debug("%s %s : %i [cached]", rtype.upper(), full_url, response.status)
+        if not update and self.get_response(_url_full) is not None:
+            response = self.get_response(_url_full)
+            log.debug("%s %s : %i [cached]", rtype.upper(), _url_full, response.status)
             return response
         
         if 'headers' not in kwargs:
@@ -101,29 +102,29 @@ class Environment:
         if self._proxy and 'proxy' not in kwargs:
             kwargs['proxy'] = self._proxy
 
-        up = urlparse(full_url)
+        up = urlparse(url)
 
         _session = self._hosts.get(up.hostname)
         _close = False
         if not _session:
             base = f"{up.scheme}://{up.hostname}" + (f":{up.port}" if up.port else "")
-            _session = aiohttp.ClientSession(base_url=base)
+            _session = aiohttp.ClientSession(base_url=base, proxy=self._proxy)
             _close = True
 
-        if self._proxy:
-            request_url = full_url  
-        else:
-            request_url = up.path
-            if up.query:
-                request_url += '?' + up.query
+        request_url = f"{up.scheme}://{up.netloc}{up.path}"
+        if up.query:
+            kwargs['params'] = parse_qs(up.query)
 
         requests = {
-            "get": lambda session, path, **kw: session.get(path, allow_redirects=True, timeout=5, **kw),
-            "post": lambda session, path, **kw: session.post(path, allow_redirects=True, timeout=5, **kw),
+            "get" : lambda session, path, **kw: session.get (path, allow_redirects=True, timeout=2, **kw),
+            "post": lambda session, path, **kw: session.post(path, allow_redirects=True, timeout=2, **kw),
         }
 
+        if rtype not in requests:
+            return None
+
         try:
-            async with requests[rtype](_session, request_url, **kwargs) as response:
+            async with requests.get(rtype)(_session, request_url, **kwargs) as response:
                 text = await response.read()
                 try:
                     text = text.decode()
@@ -140,6 +141,6 @@ class Environment:
         if _close:
             await _session.close()
 
-        self.save_response(full_url, result)
-        log.debug("%s %s : %i", rtype.upper(), full_url, result.status)
+        self.save_response(_url_full, result)
+        log.debug("%s %s : %i", rtype.upper(), _url_full, result.status)
         return result
