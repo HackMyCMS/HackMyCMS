@@ -66,7 +66,7 @@ if module_cls is None:
     log.error("Module %s not found", args.module)
     exit(1)
 
-env = Environment(user_agent=args.user_agent)
+env = Environment(user_agent=args.user_agent, proxy=args.proxy)
 
 module = module_cls(env)
 
@@ -87,6 +87,11 @@ if args.help:
 modules_args = module_parser.parse_args(remaining)
 
 module.set_arguments(**modules_args.__dict__)
-asyncio.run(module.run())
+
+try:
+    asyncio.run(module.run())
+except KeyboardInterrupt:
+    print()
+    print("(x_x)")
 
 log.debug("HMC done !")

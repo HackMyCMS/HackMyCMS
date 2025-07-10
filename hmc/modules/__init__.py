@@ -261,8 +261,10 @@ class Module(metaclass=_Module_Meta):
             self._args[arg.name] = arg
         for param_name, param in sig.parameters.items():
             if param_name not in self.module_args:
-                default = None if param.default is not param.empty else param.default
-                p_type = None if param.annotation is not param.empty else param.annotation
+                default = None if param.default is param.empty else param.default
+                p_type = None if param.annotation is param.empty else param.annotation
+                if not p_type and default is not None:
+                    p_type = type(default)
                 self._args[param_name] = Argument(param_name, '--' + param_name, arg_type=p_type, default=default)
 
 class Workflow(Module):
@@ -364,9 +366,11 @@ class Workflow(Module):
         _worker = self._loop.create_task(obj.wait_for_pipes())
         _worker.add_done_callback(self._worker_done)
         self._workers.append(_worker)
+        log.debug("Worker created [%i/%i]", len(self._workers), self._max_worker)
 
     def _worker_done(self, worker):
         self._workers.remove(worker)
+        log.debug("Worker removed [%i/%i]", len(self._workers), self._max_worker)
 
         if self._queue and not self._canceled:
             obj = self._queue.pop()

@@ -83,7 +83,7 @@ class Environment:
     async def _request(self, rtype: str, url: str, update: bool = False, **kwargs) -> Response:
         if not update and self.get_response(url) is not None:
             response = self.get_response(url)
-            log.debug("GET %s : %i [cached]", url, response.status)
+            log.debug("%s %s : %i [cached]", rtype.upper(), url, response.status)
             return response
 
         if 'headers' not in kwargs:
@@ -99,7 +99,8 @@ class Environment:
 
         _session = self._hosts.get(up.hostname)
         if not _session:
-            _session = aiohttp.ClientSession(base_url=up.scheme + "://" + up.hostname)
+            base = up.scheme + "://" + up.hostname + (":" + str(up.port) if up.port else "")
+            _session = aiohttp.ClientSession(base_url=base)
             _close = True
 
         full_path = up.path
@@ -122,11 +123,13 @@ class Environment:
                 result = Response(response.status, text, response.headers)
         except Exception as e:
             log.warning("Request failed: %s", e)
+            if _close:
+                await _session.close()
             return None
 
         if _close:
             await _session.close()
 
         self.save_response(url, result)
-        log.debug("GET %s : %i", url, result.status)
+        log.debug("%s %s : %i", rtype.upper(), url, result.status)
         return result

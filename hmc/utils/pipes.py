@@ -133,7 +133,7 @@ class PipesHub:
     def add_condition(self, obj, condition):
         self._condition.append((condition, obj))
 
-    def write(self, data):
+    def write(self, data, eof=False):
         self._contents.append(data)
 
         if self._workflow:
@@ -151,6 +151,9 @@ class PipesHub:
 
         for pipe in self._pipes:
             pipe.write(data)
+
+        if eof:
+            self.close()
 
     def write_eof(self, data=None):
         if data:

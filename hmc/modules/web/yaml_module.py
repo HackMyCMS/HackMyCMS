@@ -39,10 +39,10 @@ def _complete_path(path:str, url:str=None):
 
     replacement = {
         "BaseURL"   : pu.geturl(),
-        "RootURL"   : pu.scheme + "://" + pu.hostname + (':' + pu.port if pu.port else ""),
-        "Hostname"  : pu.hostname + (':' + pu.port if pu.port else ""),
+        "RootURL"   : pu.scheme + "://" + pu.hostname + (':' + str(pu.port) if pu.port else ""),
+        "Hostname"  : pu.hostname + (':' + str(pu.port) if pu.port else ""),
         "Host"      : pu.hostname,
-        "Port"      : port,
+        "Port"      : str(port),
         "Path"      : pu.path,
         "File"      : url.split("/")[-1],
         "Scheme"    : pu.scheme
@@ -104,7 +104,8 @@ class YAMLModule(Module):
 
     def get_method(self, request):
         implemented_methods = {
-            'GET': self.env.get
+            'GET': self.env.get,
+            'POST': self.env.post
         }
 
         method = request.get('method')
@@ -145,7 +146,7 @@ class YAMLModule(Module):
         for p in path:
             response = await method(p, update=update, headers=headers, data=body)
             if not response:
-                break
+                continue
 
             result['text'] = response.text
             result['status_code'] = response.status
@@ -161,7 +162,7 @@ class YAMLModule(Module):
         return result
 
     def evaluate_matchers(self, request, outputs) -> bool:
-        if not request:
+        if not request or not outputs:
             return False
 
         matchers_condition = request.get('matchers-condition', "and")
