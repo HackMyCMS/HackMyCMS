@@ -108,7 +108,7 @@ class Environment:
         _close = False
         if not _session:
             base = f"{up.scheme}://{up.hostname}" + (f":{up.port}" if up.port else "")
-            _session = aiohttp.ClientSession(base_url=base, proxy=self._proxy)
+            _session = aiohttp.ClientSession(base_url=base, proxy=self._proxy, connector=aiohttp.TCPConnector(verify_ssl=False))
             _close = True
 
         request_url = f"{up.scheme}://{up.netloc}{up.path}"
