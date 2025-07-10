@@ -25,7 +25,7 @@ class SPIPAnalyzer(Workflow):
             SPIPDetect(),
             entries={ 'domain': 'domain' },
             outputs={
-                'result': 'result'
+                'is_spip': 'result'
             }
         )
 
@@ -33,7 +33,7 @@ class SPIPAnalyzer(Workflow):
             SPIPDetectPlugins(),
             entries={ 'domain': 'url' },
             outputs={ 'plugin': 'plugin' },
-            condition=(['result'], lambda r: r is True)
+            condition=(['is_spip'], lambda r: r is True)
         )
 
         self.add_module(
@@ -44,13 +44,12 @@ class SPIPAnalyzer(Workflow):
                 'proxy': 'proxy'
             },
             outputs={ 'result_rce': 'plume_rce' },
-            condition=(['plugin'], lambda p: p['name'] == 'porte_plume' and p['version'] <= '3.1.4')
+            condition=(['is_spip', 'plugin'], lambda s, p: s == True and p['name'] == 'porte_plume' and p['version'] <= '3.1.4')
         )
 
-    async def execute(self, domain, cmd, proxy):
+    async def execute(self, domain, cmd):
         
         self.get_hub("cmd").write_eof(cmd)
-        self.get_hub("proxy").write_eof(proxy)
         self.get_hub("domain").write_eof(domain)
 
         await self.wait_until_done()
