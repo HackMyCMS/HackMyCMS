@@ -19,7 +19,7 @@ class Response:
 
 class Environment:
 
-    def __init__(self, user_agent=None, memory_max=15):
+    def __init__(self, user_agent=None, proxy=None, memory_max=15):
         
         self._hosts   = {}
         self._history = {}
@@ -27,6 +27,7 @@ class Environment:
         self._hubs = {}
 
         self._user_agent = user_agent
+        self._proxy      = proxy
         self._memory_max = memory_max
 
     def get_or_create_hub(self, hub_name):
@@ -89,6 +90,9 @@ class Environment:
             kwargs['headers'] = {'user-agent': self._user_agent}
         elif 'user-agent' not in kwargs['headers']:
             kwargs['headers']['user-agent'] = self._user_agent
+
+        if self._proxy and not 'proxy' not in kwargs:
+            kwargs['proxy'] = self._proxy
 
         _close = False
         up = urlparse(url)

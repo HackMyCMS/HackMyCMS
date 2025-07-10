@@ -14,10 +14,11 @@ parser = argparse.ArgumentParser(
     description='HackMyCMS: A swiss army knife for pentesting CMS', 
     add_help=False
 )
-parser.add_argument('module', nargs='?', help='The HMC module or application to execute', default="")
+module_action = parser.add_argument('module', nargs='?', help='The HMC module or application to execute', default="")
 parser.add_argument('-L', '--list', action='store_true', default=False, help="List every Modules and Applications available")
 parser.add_argument('-v', '--verbose', action='store_true', default=False, help='Enable debug log level')
 parser.add_argument('-U', '--user-agent', default=USER_AGENT, help='The user-agent to use')
+parser.add_argument('-p', '--proxy', default=None, help='Proxy (e.g., http://127.0.0.1:8080)')
 parser.add_argument('-h', '--help', action='store_true', default=False, help='show this help message and exit')
 
 log = logging.getLogger("hmc")
@@ -69,9 +70,12 @@ env = Environment(user_agent=args.user_agent)
 
 module = module_cls(env)
 
+parser._remove_action(module_action)
 module_parser = argparse.ArgumentParser(
     prog='hmc %s' % module.module_name,
-    description='HackMyCMS: A swiss army knife for pentesting CMS'
+    description=module.module_desc,
+    conflict_handler='resolve',
+    parents=[parser],
 )
 
 fill_parser(module.get_arguments(), module_parser)
