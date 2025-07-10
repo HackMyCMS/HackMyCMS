@@ -16,9 +16,9 @@ info:
 http:
   - method: GET
     path:
-      - "{{BaseURL}}/"
-      - "{{BaseURL}}/ecrire/"
-      - "{{BaseURL}}/spip.php"
+      - "{{BaseURL}}"
+      - "{{BaseURL}}ecrire/"
+      - "{{BaseURL}}spip.php"
 
     redirects: true
     max-redirects: 2

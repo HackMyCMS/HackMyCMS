@@ -3,7 +3,7 @@ import aiohttp
 import logging
 
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 from hmc.utils.pipes import PipesHub
 
@@ -81,49 +81,53 @@ class Environment:
         return await self._request('post', url, True, **kwargs)
 
     async def _request(self, rtype: str, url: str, update: bool = False, **kwargs) -> Response:
-        full_url = url
-        full_url += '?'
-        for k, v in kwargs.get('params', {}).items():
-            full_url += f"{k}={v};"
-        full_url = full_url[:-1]
-        
+        params = kwargs.get('params', {})
+        url = url.rstrip('/')
+        if params:
+            full_url = url + '?' + urlencode(params)
+        else:
+            full_url = url
+
         if not update and self.get_response(full_url) is not None:
             response = self.get_response(full_url)
             log.debug("%s %s : %i [cached]", rtype.upper(), full_url, response.status)
             return response
-
+        
         if 'headers' not in kwargs:
             kwargs['headers'] = {'user-agent': self._user_agent}
         elif 'user-agent' not in kwargs['headers']:
             kwargs['headers']['user-agent'] = self._user_agent
 
-        if self._proxy and not 'proxy' in kwargs:
+        if self._proxy and 'proxy' not in kwargs:
             kwargs['proxy'] = self._proxy
-            
-        _close = False
-        up = urlparse(url)
+
+        up = urlparse(full_url)
 
         _session = self._hosts.get(up.hostname)
+        _close = False
         if not _session:
-            base = up.scheme + "://" + up.hostname + (":" + str(up.port) if up.port else "")
+            base = f"{up.scheme}://{up.hostname}" + (f":{up.port}" if up.port else "")
             _session = aiohttp.ClientSession(base_url=base)
             _close = True
 
-        full_path = up.path
-        if up.query:
-            full_path += '?' + up.query
+        if self._proxy:
+            request_url = full_url  
+        else:
+            request_url = up.path
+            if up.query:
+                request_url += '?' + up.query
 
         requests = {
-            "get": lambda session, path, **kw: session.get(path, allow_redirects=True, timeout=2, **kw),
-            "post": lambda session, path, **kw: session.post(path, allow_redirects=True, timeout=2, **kw),
+            "get": lambda session, path, **kw: session.get(path, allow_redirects=True, timeout=5, **kw),
+            "post": lambda session, path, **kw: session.post(path, allow_redirects=True, timeout=5, **kw),
         }
 
         try:
-            async with requests.get(rtype)(_session, full_path, **kwargs) as response:
-                text = await response.content.read()
+            async with requests[rtype](_session, request_url, **kwargs) as response:
+                text = await response.read()
                 try:
                     text = text.decode()
-                except:
+                except Exception:
                     text = ""
 
                 result = Response(response.status, text, response.headers)
