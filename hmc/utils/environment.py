@@ -81,9 +81,15 @@ class Environment:
         return await self._request('post', url, True, **kwargs)
 
     async def _request(self, rtype: str, url: str, update: bool = False, **kwargs) -> Response:
-        if not update and self.get_response(url) is not None:
-            response = self.get_response(url)
-            log.debug("%s %s : %i [cached]", rtype.upper(), url, response.status)
+        full_url = url
+        full_url += '?'
+        for k, v in kwargs.get('params', {}).items():
+            full_url += f"{k}={v};"
+        full_url = full_url[:-1]
+        
+        if not update and self.get_response(full_url) is not None:
+            response = self.get_response(full_url)
+            log.debug("%s %s : %i [cached]", rtype.upper(), full_url, response.status)
             return response
 
         if 'headers' not in kwargs:
@@ -130,6 +136,6 @@ class Environment:
         if _close:
             await _session.close()
 
-        self.save_response(url, result)
-        log.debug("%s %s : %i", rtype.upper(), url, result.status)
+        self.save_response(full_url, result)
+        log.debug("%s %s : %i", rtype.upper(), full_url, result.status)
         return result
