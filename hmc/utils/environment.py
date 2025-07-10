@@ -91,9 +91,9 @@ class Environment:
         elif 'user-agent' not in kwargs['headers']:
             kwargs['headers']['user-agent'] = self._user_agent
 
-        if self._proxy and not 'proxy' not in kwargs:
+        if self._proxy and not 'proxy' in kwargs:
             kwargs['proxy'] = self._proxy
-
+            
         _close = False
         up = urlparse(url)
 
