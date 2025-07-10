@@ -13,15 +13,10 @@ class SPIPAnalyzer(Workflow):
 
     module_args = [
         Argument("domain", desc="Target domain (e.g., http://example.com)"),
-<<<<<<< HEAD
         Argument("cmd", "-c", "--cmd", desc="Command to execute (RCE)", default="id"),
-=======
-        Argument("cmd", "-c", "--cmd", desc="Command to execute (RCE)", default="id")
->>>>>>> 269b3b007148d86206f1dde33c96586b19649a09
     ]
     
     def init_modules(self):
-
         self.exec_rce = True
 
         self.add_module(
@@ -36,7 +31,7 @@ class SPIPAnalyzer(Workflow):
             SPIPDetectPlugins(),
             entries={ 'domain': 'url' },
             outputs={ 'plugin': 'plugin' },
-            condition=(['is_spip'], lambda r: r is True)
+            condition=(['is_spip'], lambda s: s is True)
         )
 
         self.add_module(
