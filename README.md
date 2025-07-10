@@ -1,6 +1,6 @@
 # HackMyCMS
 
-![HackMyCMS Logo](https://raw.githubusercontent.com/HackMyCMS/HackMyCMS/main/logo.png)
+![HackMyCMS Logo](./doc/hmc_logo_small.png)
 
 ## Description
 

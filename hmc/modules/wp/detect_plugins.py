@@ -13,6 +13,7 @@ class WPDetectPlugins(Module):
 
     module_name = "detect_plugins"
     module_desc = "Scan the given url to find plugins revealed in the page's code"
+    module_auth = "Mageos"
 
     def __init__(self, env=None, print_logs=True, plugins=None, **exec_args):
         super().__init__(env, print_logs, **exec_args)

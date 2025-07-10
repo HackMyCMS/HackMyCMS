@@ -15,6 +15,7 @@ class WPScan(Workflow):
 
     module_name = "wp_scan"
     module_desc = "Test Worpress Scan"
+    module_auth = "Mageos"
 
     module_args = [
         Argument("domain", desc="The target to scan")
