@@ -13,8 +13,7 @@ class SPIPAnalyzer(Workflow):
 
     module_args = [
         Argument("domain", desc="Target domain (e.g., http://example.com)"),
-        Argument("cmd", "-c", "--cmd", desc="Command to execute (RCE)", default="id"),
-        Argument("proxy", "-x", "--proxy", desc="Optional HTTP proxy", default=None)
+        Argument("cmd", "-c", "--cmd", desc="Command to execute (RCE)", default="id")
     ]
     
     def init_modules(self):
@@ -41,7 +40,6 @@ class SPIPAnalyzer(Workflow):
             entries={
                 'domain': 'url',
                 'cmd': 'cmd',
-                'proxy': 'proxy'
             },
             outputs={ 'result_rce': 'plume_rce' },
             condition=(['is_spip', 'plugin'], lambda s, p: s == True and p['name'] == 'porte_plume' and p['version'] <= '3.1.4')

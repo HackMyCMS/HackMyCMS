@@ -99,8 +99,7 @@ test
             post_resp = await self.env.post(
                 url=full_url,
                 headers=headers,
-                data=data,
-                proxy=proxy
+                data=data
             )
 
             if not post_resp:

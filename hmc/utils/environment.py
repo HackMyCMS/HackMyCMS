@@ -122,6 +122,9 @@ class Environment:
                 result = Response(response.status, text, response.headers)
         except Exception as e:
             log.warning("Request failed: %s", e)
+
+            if _close:
+                await _session.close()
             return None
 
         if _close:
